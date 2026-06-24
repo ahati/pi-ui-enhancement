@@ -15,12 +15,13 @@ import {
 	MCP_OUTPUT_MODES,
 	READ_OUTPUT_MODES,
 	SEARCH_OUTPUT_MODES,
+	SHIKI_CODE_BLOCK_THEMES,
 	type ToolDisplayConfig,
 	type ToolOverrideOwnership,
 } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
 
-const CONFIG_DIR = join(resolvePiAgentDir(), "extensions", "pi-tool-display");
+const CONFIG_DIR = join(resolvePiAgentDir(), "extensions", "pi-render");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 interface LegacyToolDisplayConfigSource extends Partial<ToolDisplayConfig> {
@@ -80,6 +81,12 @@ function toDiffIndicatorMode(value: unknown): ToolDisplayConfig["diffIndicatorMo
 	return DIFF_INDICATOR_MODES.includes(value as ToolDisplayConfig["diffIndicatorMode"])
 		? (value as ToolDisplayConfig["diffIndicatorMode"])
 		: DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode;
+}
+
+function toShikiCodeBlockTheme(value: unknown): ToolDisplayConfig["shikiCodeBlockTheme"] {
+	return SHIKI_CODE_BLOCK_THEMES.includes(value as ToolDisplayConfig["shikiCodeBlockTheme"])
+		? (value as ToolDisplayConfig["shikiCodeBlockTheme"])
+		: DEFAULT_TOOL_DISPLAY_CONFIG.shikiCodeBlockTheme;
 }
 
 function cloneCustomToolOverrides(
@@ -214,6 +221,15 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			source.enableNativeUserMessageBox,
 			DEFAULT_TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox,
 		),
+		enableShikiCodeBlocks: toBoolean(
+			source.enableShikiCodeBlocks,
+			DEFAULT_TOOL_DISPLAY_CONFIG.enableShikiCodeBlocks,
+		),
+		formatCodeBlocks: toBoolean(
+			source.formatCodeBlocks,
+			DEFAULT_TOOL_DISPLAY_CONFIG.formatCodeBlocks,
+		),
+		shikiCodeBlockTheme: toShikiCodeBlockTheme(source.shikiCodeBlockTheme),
 		readOutputMode: toReadOutputMode(source.readOutputMode),
 		searchOutputMode: toSearchOutputMode(source.searchOutputMode),
 		mcpOutputMode: toMcpOutputMode(source.mcpOutputMode),

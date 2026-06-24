@@ -51,7 +51,7 @@ test("config normalization clamps invalid values and migrates legacy read overri
 });
 
 test("config load reports parse errors and falls back to defaults", () => {
-  withTempDir("pi-tool-display-config-load-", (dir) => {
+  withTempDir("pi-render-config-load-", (dir) => {
     const configFile = join(dir, "config.json");
     writeFileSync(configFile, "{not-json", "utf8");
 
@@ -64,7 +64,7 @@ test("config load reports parse errors and falls back to defaults", () => {
 });
 
 test("config save writes normalized JSON and cleans temporary file on failure", () => {
-  withTempDir("pi-tool-display-config-save-", (dir) => {
+  withTempDir("pi-render-config-save-", (dir) => {
     const configFile = join(dir, "config.json");
     const saved = saveToolDisplayConfig(
       { ...DEFAULT_TOOL_DISPLAY_CONFIG, previewLines: 999 },

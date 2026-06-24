@@ -1,5 +1,5 @@
-const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
-const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
+const TOOL_DISPLAY_API_KEY = Symbol.for("pi-render.api.v1");
+const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-render.pendingDecorations.v1");
 
 export function getToolDisplayApi() {
   const api = globalThis[TOOL_DISPLAY_API_KEY];

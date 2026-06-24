@@ -80,8 +80,13 @@ function safeRealpath(path: string): string {
 }
 
 function resolveWorkspaceReadPath(cwd: string, rawPath: string): { resolvedPath: string; error?: string } {
+  const workspaceInputPath = resolvePreviewPath(cwd, ".");
   const workspacePath = safeRealpath(cwd);
-  const resolvedPath = resolvePreviewPath(cwd, rawPath);
+  const rawResolvedPath = resolvePreviewPath(cwd, rawPath);
+  const relativeFromInputWorkspace = relative(workspaceInputPath, rawResolvedPath);
+  const resolvedPath = isWithinWorkspace(workspaceInputPath, rawResolvedPath)
+    ? resolve(workspacePath, relativeFromInputWorkspace)
+    : rawResolvedPath;
 
   if (!isWithinWorkspace(workspacePath, resolvedPath)) {
     return {

@@ -137,9 +137,9 @@ const WRITE_EXECUTION_META_STATE_KEY = "__piToolDisplayWriteExecutionMeta";
 const EDIT_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayEditPendingPreview";
 const WRITE_PENDING_PREVIEW_STATE_KEY = "__piToolDisplayWritePendingPreview";
 
-const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
-const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
-const TOOL_DISPLAY_REGISTER_TOOL_INTERCEPTOR_KEY = Symbol.for("pi-tool-display.registerToolInterceptor.v1");
+const TOOL_DISPLAY_API_KEY = Symbol.for("pi-render.api.v1");
+const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-render.pendingDecorations.v1");
+const TOOL_DISPLAY_REGISTER_TOOL_INTERCEPTOR_KEY = Symbol.for("pi-render.registerToolInterceptor.v1");
 const TOOL_DISPLAY_DECORATED_PROPERTIES = [
   "renderCall",
   "renderResult",

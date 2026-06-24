@@ -1,7 +1,7 @@
 {
-  "name": "pi-tool-display",
+  "name": "pi-render",
   "version": "0.4.3",
-  "description": "Compact tool call rendering, diff visualization, and output truncation extension for Pi coding agent. Hides, collapses, and truncates verbose tool output for cleaner TUI display.",
+  "description": "Compact Pi rendering extension with Shiki/TextMate markdown code blocks, diff visualization, and output truncation.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
@@ -47,16 +47,16 @@
     "diff",
     "output-mode"
   ],
-  "author": "MasuRii",
+  "author": "jiwnchoi",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MasuRii/pi-tool-display.git"
+    "url": "git+https://github.com/jiwnchoi/pi-render.git"
   },
   "bugs": {
-    "url": "https://github.com/MasuRii/pi-tool-display/issues"
+    "url": "https://github.com/jiwnchoi/pi-render/issues"
   },
-  "homepage": "https://github.com/MasuRii/pi-tool-display#readme",
+  "homepage": "https://github.com/jiwnchoi/pi-render#readme",
   "engines": {
     "node": ">=20"
   },
@@ -69,8 +69,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0",
-    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0"
+    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0",
+    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.77.0 || ^0.78.0 || ^0.79.0 || ^0.80.0"
   },
   "overrides": {
     "file-type": ">=21.3.1"
@@ -78,5 +78,8 @@
   "devDependencies": {
     "tsx": "4.22.4",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "shiki": "^4.2.0"
   }
 }

@@ -44,6 +44,9 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`preset=${preset}`,
 		`owners={${toolOwnershipSummary(config)}}`,
 		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
+		`shiki=${toOnOff(config.enableShikiCodeBlocks)}`,
+		`codeBox=${toOnOff(config.formatCodeBlocks)}`,
+		`shikiTheme=${config.shikiCodeBlockTheme}`,
 		`read=${config.readOutputMode}`,
 		`search=${config.searchOutputMode}`,
 		`preview=${config.previewLines}`,
@@ -82,7 +85,7 @@ function buildAdvancedNotes(
 ): string[] {
 	const notes = [
 		...extra,
-		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, and diffWordWrap.",
+		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, diffWordWrap, and shikiCodeBlockTheme.",
 		`Tool ownership is currently ${toolOwnershipSummary(config)} and still applies after /reload.`,
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
@@ -290,6 +293,46 @@ function buildInspectorSettings(
 			searchTerms: ["diff", "indicator", "bars", "classic", "none", "marker"],
 		},
 		{
+			id: "enableShikiCodeBlocks",
+			label: "Shiki code highlighting",
+			currentValue: toOnOff(config.enableShikiCodeBlocks),
+			values: ["on", "off"],
+			inspectorTitle: "Shiki Code Highlighting",
+			inspectorSummary: [
+				"Toggles TextMate grammar-backed Shiki highlighting for markdown code fences in assistant, user, and custom markdown messages.",
+				"When Shiki cannot load a language, rendering falls back to Pi's built-in markdown highlighter automatically.",
+			],
+			inspectorOptions: [
+				"on — use Shiki's TextMate renderer for known fenced languages",
+				"off — keep Pi's built-in code fence highlighting",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Set shikiCodeBlockTheme in config.json to github-dark, github-light, dark-plus, light-plus, min-dark, min-light, one-dark-pro, vitesse-dark, or vitesse-light.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["shiki", "textmate", "syntax", "highlight", "code", "fence"],
+		},
+		{
+			id: "formatCodeBlocks",
+			label: "Code block box",
+			currentValue: toOnOff(config.formatCodeBlocks),
+			values: ["on", "off"],
+			inspectorTitle: "Code Block Box Formatting",
+			inspectorSummary: [
+				"Toggles the rounded bordered layout for markdown code blocks.",
+				"This only changes transcript presentation; it does not alter stored message content or model context.",
+			],
+			inspectorOptions: [
+				"on — render fences as compact bordered code panels with a language label",
+				"off — keep classic triple-backtick fence formatting",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Code block box formatting can be used with Shiki on or off; highlighting falls back to Pi's built-in renderer when needed.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["code", "block", "box", "format", "fence", "markdown"],
+		},
+		{
 			id: "enableNativeUserMessageBox",
 			label: "Native user message box",
 			currentValue: toOnOff(config.enableNativeUserMessageBox),
@@ -328,6 +371,16 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			return {
 				...config,
 				enableNativeUserMessageBox: value === "on",
+			};
+		case "enableShikiCodeBlocks":
+			return {
+				...config,
+				enableShikiCodeBlocks: value === "on",
+			};
+		case "formatCodeBlocks":
+			return {
+				...config,
+				formatCodeBlocks: value === "on",
 			};
 		case "readOutputMode":
 			return {

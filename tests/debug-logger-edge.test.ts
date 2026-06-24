@@ -24,7 +24,7 @@ import {
 async function withTempRoot(
   run: (root: string) => Promise<void> | void,
 ): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), "pi-tool-display-debug-edge-"));
+  const root = mkdtempSync(join(tmpdir(), "pi-render-debug-edge-"));
   try {
     await run(root);
   } finally {

@@ -16,7 +16,7 @@ import {
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 
-const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
+const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-render.pendingDecorations.v1");
 
 interface RegisteredToolLike {
 	name: string;
@@ -189,7 +189,7 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 });
 
 test("bash override uses shellPath from Pi settings", async () => {
-	await withTempDir("pi-tool-display-shellpath-", async (dir) => {
+	await withTempDir("pi-render-shellpath-", async (dir) => {
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = dir;
 		writeFileSync(
@@ -221,7 +221,7 @@ test("bash override uses shellPath from Pi settings", async () => {
 });
 
 test("bash override uses shellCommandPrefix from Pi settings", async () => {
-	await withTempDir("pi-tool-display-shellprefix-", async (dir) => {
+	await withTempDir("pi-render-shellprefix-", async (dir) => {
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = dir;
 		writeFileSync(

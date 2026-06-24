@@ -6,6 +6,17 @@ export const CUSTOM_TOOL_OUTPUT_MODES = ["hidden", "summary", "preview"] as cons
 export const BASH_OUTPUT_MODES = ["opencode", "summary", "preview"] as const;
 export const DIFF_VIEW_MODES = ["auto", "split", "unified"] as const;
 export const DIFF_INDICATOR_MODES = ["bars", "classic", "none"] as const;
+export const SHIKI_CODE_BLOCK_THEMES = [
+	"github-dark",
+	"github-light",
+	"dark-plus",
+	"light-plus",
+	"min-dark",
+	"min-light",
+	"one-dark-pro",
+	"vitesse-dark",
+	"vitesse-light",
+] as const;
 
 export type ReadOutputMode = (typeof READ_OUTPUT_MODES)[number];
 export type SearchOutputMode = (typeof SEARCH_OUTPUT_MODES)[number];
@@ -15,6 +26,7 @@ export type CustomToolOutputMode = (typeof CUSTOM_TOOL_OUTPUT_MODES)[number];
 export type BashOutputMode = (typeof BASH_OUTPUT_MODES)[number];
 export type DiffViewMode = (typeof DIFF_VIEW_MODES)[number];
 export type DiffIndicatorMode = (typeof DIFF_INDICATOR_MODES)[number];
+export type ShikiCodeBlockTheme = (typeof SHIKI_CODE_BLOCK_THEMES)[number];
 
 export const BUILT_IN_TOOL_OVERRIDE_NAMES = [
 	"read",
@@ -48,6 +60,9 @@ export interface ToolDisplayConfig {
 	registerToolOverrides: ToolOverrideOwnership;
 	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
+	enableShikiCodeBlocks: boolean;
+	formatCodeBlocks: boolean;
+	shikiCodeBlockTheme: ShikiCodeBlockTheme;
 	readOutputMode: ReadOutputMode;
 	searchOutputMode: SearchOutputMode;
 	mcpOutputMode: McpOutputMode;
@@ -76,6 +91,9 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	},
 	customToolOverrides: {},
 	enableNativeUserMessageBox: true,
+	enableShikiCodeBlocks: true,
+	formatCodeBlocks: true,
+	shikiCodeBlockTheme: "github-dark",
 	readOutputMode: "hidden",
 	searchOutputMode: "hidden",
 	mcpOutputMode: "hidden",

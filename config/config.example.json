@@ -22,6 +22,9 @@
     }
   },
   "enableNativeUserMessageBox": true,
+  "enableShikiCodeBlocks": true,
+  "formatCodeBlocks": true,
+  "shikiCodeBlockTheme": "github-dark",
   "readOutputMode": "hidden",
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",

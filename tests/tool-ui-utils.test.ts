@@ -41,7 +41,7 @@ const codePointWidthOps = {
 
 
 test("pending edit preview matches LF edit input against CRLF files", () => {
-  const baseDir = mkdtempSync(join(tmpdir(), "pi-tool-display-preview-"));
+  const baseDir = mkdtempSync(join(tmpdir(), "pi-render-preview-"));
 
   try {
     const filePath = join(baseDir, "sample.txt");
@@ -69,7 +69,7 @@ test("pending edit preview matches LF edit input against CRLF files", () => {
 });
 
 test("pending edit preview reports a concise notice for true edit mismatches", () => {
-  const baseDir = mkdtempSync(join(tmpdir(), "pi-tool-display-preview-miss-"));
+  const baseDir = mkdtempSync(join(tmpdir(), "pi-render-preview-miss-"));
 
   try {
     writeFileSync(join(baseDir, "sample.txt"), "alpha\nbeta\n", "utf8");
