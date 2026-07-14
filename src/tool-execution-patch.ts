@@ -11,23 +11,9 @@ import {
 import { onReloadShutdown } from "./extension-lifecycle.js";
 import type { ToolDisplayConfig } from "./types.js";
 
-/**
- * MCP tool rendering broke on Pi 0.80.6+ for two reasons:
- *   1. `pi.registerTool` is now a per-extension API, so intercepting it on
- *      this extension's API no longer captures tools registered by other
- *      extensions (e.g. pi-mcp-adapter's direct tools).
- *   2. `pi.getAllTools()` returns shallow clones that omit `renderCall`,
- *      `renderResult`, and `label`, so the session-start decoration sweep
- *      mutates throwaway objects and never reaches the live tool definitions.
- *
- * `ToolExecutionComponent` resolves the renderer per call via
- * `getCallRenderer()` / `getResultRenderer()`, reading the LIVE
- * `this.toolDefinition` (which still carries `label`). Patching those
- * prototype methods lets us render MCP-candidate tools with pi-tool-display's
- * compact renderers at render time, regardless of how the tool was registered
- * or whether `getAllTools()` exposes renderers. This mirrors the existing
- * `UserMessageComponent` prototype patch.
- */
+// Render MCP tools at render time by patching ToolExecutionComponent's renderer
+// accessors. Works around Pi 0.80.6+'s per-extension pi.registerTool and
+// getAllTools() clones, which made the existing decoration paths miss MCP tools.
 
 const PATCH_VERSION = 1;
 const PATCH_OWNER = {};
@@ -72,8 +58,6 @@ function isMcpRenderCandidate(proto: PatchableToolExecutionPrototype): boolean {
   if (!def) {
     return false;
   }
-  // Built-in tools are owned by pi-tool-display's own overrides; leave them to
-  // the original resolver so per-tool ownership and diff renderers still apply.
   if (proto.builtInToolDefinition) {
     return false;
   }
@@ -97,7 +81,6 @@ function patchToolExecutionMcpRender(
     typeof previousCall === "function" && previousCall !== proto.getCallRenderer;
   const isCurrentPatch = proto.__piToolDisplayMcpPatchOwner === PATCH_OWNER;
 
-  // Restore a stale patch left by a previous extension instance.
   if (hasPreviousPatch && !isCurrentPatch && typeof previousCall === "function" && typeof previousResult === "function") {
     proto.getCallRenderer = previousCall;
     proto.getResultRenderer = previousResult;
