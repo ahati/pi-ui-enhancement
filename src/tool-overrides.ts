@@ -91,7 +91,7 @@ interface RuntimeToolDefinition {
   [key: string]: unknown;
 }
 
-interface RenderTheme {
+export interface RenderTheme {
   fg(color: string, text: string): string;
   bg?(color: string, text: string): string;
   bold(text: string): string;
@@ -1153,7 +1153,7 @@ function formatArgCountSuffix(argCount: number, theme: RenderTheme): string {
     : theme.fg("muted", ` (${argCount} ${pluralize(argCount, "arg")})`);
 }
 
-function formatMcpCallLine(
+export function formatMcpCallLine(
   toolName: string,
   toolLabel: string,
   args: Record<string, unknown>,
@@ -1195,7 +1195,7 @@ function getMcpTruncationDetails(details: unknown): {
   };
 }
 
-function renderMcpResult(
+export function renderMcpResult(
   result: ToolRenderInput,
   options: ToolRenderResultOptions,
   config: ToolDisplayConfig,
