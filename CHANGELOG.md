@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Applied built-in tool display renderers through the Pi tool renderer chain (`registerToolRenderer`, Pi 1.1+) so extensions that own the execute side of `read`, `grep`, `find`, `ls`, `bash`, `edit`, or `write` — such as `pi-ssh-remote` routing tools to a remote host — keep compact rendering in any load order. On Pi versions without the renderer chain, externally owned tools keep the previous skip behavior.
+
 ## [0.5.0] - 2026-07-03
 
 ### Added

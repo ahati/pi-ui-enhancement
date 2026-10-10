@@ -207,6 +207,33 @@ function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): voi
   pi.registerTool(tool as unknown as ToolDefinition);
 }
 
+type ToolRendererChainEntry = Pick<RuntimeToolDefinition, "renderCall" | "renderResult" | "renderShell">;
+
+type ToolRendererChainResolver = (
+  toolName: string,
+  next: () => ToolRendererChainEntry | undefined,
+) => ToolRendererChainEntry | undefined;
+
+// Pi >= 1.1 resolves tool renderers at render time through this chain, so a
+// renderer here applies even when another extension owns the tool's execute.
+type PiWithToolRendererChain = ExtensionAPI & {
+  registerToolRenderer?: (resolver: ToolRendererChainResolver) => void;
+};
+
+function pickToolRenderers(tool: RuntimeToolDefinition): ToolRendererChainEntry {
+  const entry: ToolRendererChainEntry = {};
+  if (typeof tool.renderCall === "function") {
+    entry.renderCall = tool.renderCall;
+  }
+  if (typeof tool.renderResult === "function") {
+    entry.renderResult = tool.renderResult;
+  }
+  if (typeof tool.renderShell === "string") {
+    entry.renderShell = tool.renderShell;
+  }
+  return entry;
+}
+
 function captureToolPropertyDescriptors(
   tool: RuntimeToolDefinition,
   descriptorSnapshots: WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>,
@@ -1616,20 +1643,43 @@ export function registerToolDisplayOverrides(
     return false;
   };
 
+  const capturedBuiltInRenderers = new Map<BuiltInToolOverrideName, ToolRendererChainEntry>();
+
   const registerIfOwned = (
     toolName: BuiltInToolOverrideName,
     register: () => void,
   ): void => {
     if (
       registeredBuiltInToolOverrides.has(toolName) ||
-      !getConfig().registerToolOverrides[toolName] ||
-      isExternallyOwnedBuiltInTool(toolName)
+      !getConfig().registerToolOverrides[toolName]
     ) {
       return;
     }
 
-    register();
-    registeredBuiltInToolOverrides.add(toolName);
+    // Externally owned tools (for example pi-ssh-remote routing read/bash/
+    // edit/write to a remote host) keep their execute; their renderers are
+    // applied later through the Pi tool renderer chain when available.
+    const externallyOwned = isExternallyOwnedBuiltInTool(toolName);
+    const originalRegisterTool = pi.registerTool;
+    pi.registerTool = ((tool: ToolDefinition) => {
+      const candidate = toRecord(tool);
+      if (getTextField(candidate, "name") === toolName) {
+        capturedBuiltInRenderers.set(toolName, pickToolRenderers(candidate));
+      }
+      if (!externallyOwned) {
+        originalRegisterTool.call(pi, tool);
+      }
+    }) as ExtensionAPI["registerTool"];
+
+    try {
+      register();
+    } finally {
+      pi.registerTool = originalRegisterTool;
+    }
+
+    if (!externallyOwned) {
+      registeredBuiltInToolOverrides.add(toolName);
+    }
   };
 
   function createBuiltinToolBase(toolName: keyof BuiltInTools) {
@@ -2073,6 +2123,23 @@ export function registerToolDisplayOverrides(
       }
     });
   };
+
+  const registerBuiltInToolRendererChain = (): void => {
+    // Peer range includes Pi < 1.1, where registerToolRenderer is absent at runtime.
+    const registerToolRenderer = (pi as PiWithToolRendererChain).registerToolRenderer;
+    if (!registerToolRenderer) {
+      return;
+    }
+
+    registerToolRenderer.call(pi as PiWithToolRendererChain, (toolName, next) => {
+      const ours = capturedBuiltInRenderers.get(toolName as BuiltInToolOverrideName);
+      if (!ours || !getConfig().registerToolOverrides[toolName as BuiltInToolOverrideName]) {
+        return next();
+      }
+      return { ...next(), ...ours };
+    });
+  };
+  registerBuiltInToolRendererChain();
 
   installMcpRegistrationInterceptor();
 

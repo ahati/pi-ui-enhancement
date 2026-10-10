@@ -66,16 +66,32 @@ function withDefaultReadEditOwners(tools: unknown[] = []): unknown[] {
 	return [...defaults, ...tools];
 }
 
+interface ToolRendererChainEntryLike {
+	renderShell?: unknown;
+	renderCall?: (...args: unknown[]) => unknown;
+	renderResult?: (...args: unknown[]) => unknown;
+}
+
+type ToolRendererChainResolverLike = (
+	toolName: string,
+	next: () => ToolRendererChainEntryLike | undefined,
+) => ToolRendererChainEntryLike | undefined;
+
 function createExtensionApiStub(allTools: unknown[] = []): {
 	api: ExtensionAPI;
 	registeredTools: RegisteredToolLike[];
 	eventHandlers: ToolEventHandlers;
+	rendererResolvers: ToolRendererChainResolverLike[];
 } {
 	const registeredTools: RegisteredToolLike[] = [];
 	const eventHandlers: ToolEventHandlers = {};
+	const rendererResolvers: ToolRendererChainResolverLike[] = [];
 	const api = {
 		registerTool(tool: RegisteredToolLike): void {
 			registeredTools.push(tool);
+		},
+		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
+			rendererResolvers.push(resolver);
 		},
 		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
 			eventHandlers[event] = handler;
@@ -85,7 +101,7 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 		},
 	} as unknown as ExtensionAPI;
 
-	return { api, registeredTools, eventHandlers };
+	return { api, registeredTools, eventHandlers, rendererResolvers };
 }
 
 test("registerToolDisplayOverrides copies built-in prompt metadata onto overridden tools", async () => {
@@ -200,6 +216,33 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("ls"), true);
 	assert.equal(registeredNames.has("bash"), true);
 	assert.equal(registeredNames.has("write"), true);
+});
+
+test("externally owned tools keep their execute and render through the Pi tool renderer chain", () => {
+	const { api, registeredTools, rendererResolvers } = createExtensionApiStub([
+		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+	]);
+
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+
+	assert.equal(registeredTools.some((tool) => tool.name === "read"), false);
+	assert.equal(rendererResolvers.length, 1);
+	const resolver = rendererResolvers[0];
+
+	const remoteRenderCall = () => "remote-render";
+	const resolvedRead = resolver("read", () => ({ renderCall: remoteRenderCall }));
+	assert.ok(resolvedRead);
+	assert.notEqual(resolvedRead.renderCall, remoteRenderCall, "chain replaces the owner's renderer");
+	assert.equal(typeof resolvedRead.renderResult, "function");
+
+	assert.equal(resolver("edit", () => undefined)?.renderShell, "default");
+	assert.equal(resolver("remote", () => undefined), undefined, "unknown tools pass through");
+
+	const registeredWrite = registeredTools.find((tool) => tool.name === "write");
+	assert.ok(registeredWrite, "expected owned write to stay registered");
+	const resolvedWrite = resolver("write", () => ({ renderCall: () => "base" }));
+	assert.equal(resolvedWrite?.renderCall, registeredWrite.renderCall, "owned tools keep the registered renderer");
 });
 
 test("bash override uses shellPath from Pi settings", async () => {

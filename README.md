@@ -106,6 +106,8 @@ import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-tool-displ
 
 `decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-tool-display` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
 
+On Pi 1.1 and later, `pi-tool-display` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
+
 ## Presets
 
 | Preset | Read Output | Search Output | MCP Output | Bash Output | Preview Lines | Bash Lines |
