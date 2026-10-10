@@ -108,6 +108,8 @@ import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-tool-displ
 
 On Pi 1.1 and later, `pi-tool-display` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
 
+Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown during load. `pi-tool-display` therefore defers built-in tool registration to the `session_start` event and registers only the tools no other extension owns. This avoids the `Tool "read" conflicts with ...` startup diagnostic and keeps the other extension's execute logic in charge.
+
 ## Presets
 
 | Preset | Read Output | Search Output | MCP Output | Bash Output | Preview Lines | Bash Lines |
@@ -324,7 +326,7 @@ If another extension is already rendering one of the built-in tools:
 2. Run `/reload`
 3. Use `/tool-display show` to confirm the effective ownership state
 
-Built-in tool overrides (including `bash`) are registered with deferred ownership discovery — the extension discovers which tools it owns via `pi.getAllTools()` during `before_agent_start` before overriding, preventing conflicts with other extensions that also register overrides.
+Built-in tool overrides use deferred ownership discovery. Pi binds `pi.getAllTools()` after extensions load, so the extension registers its overrides at `session_start`, once the tool registry is readable. It then skips every built-in name another extension already owns. Before that deferral, both extensions registered the same names, which produced the `Tool "read" conflicts with ...` startup error, and the extension loaded last also silently replaced the other one's execute logic.
 
 ### Config not loading
 
