@@ -1,39 +1,13 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-  loadToolDisplayConfig,
-  normalizeToolDisplayConfig,
-  saveToolDisplayConfig,
-} from "./config-store.js";
-import {
-  applyCapabilityConfigGuards,
-  detectToolDisplayCapabilities,
-  type ToolDisplayCapabilities,
-} from "./capabilities.js";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createToolDisplayConfigController } from "./config-controller.js";
 import { registerToolDisplayOverrides } from "./tool-overrides.js";
 import { buildBashIntentSystemPrompt } from "./bash-intent.js";
 import { registerCodemodeDisplay } from "./codemode-display.js";
 import { disposeAll, resetDisposed } from "./disposable.js";
+import { configureToolDisplayDebugLogger } from "./debug-logger.js";
 import { registerThinkingLabeling } from "./thinking-label.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import registerToolExecutionMcpPatch from "./tool-execution-patch.js";
-import {
-  BUILT_IN_TOOL_OVERRIDE_NAMES,
-  type ToolDisplayConfig,
-} from "./types.js";
-
-function ownershipChanged(
-  previous: ToolDisplayConfig,
-  next: ToolDisplayConfig,
-): boolean {
-  return BUILT_IN_TOOL_OVERRIDE_NAMES.some(
-    (toolName) =>
-      previous.registerToolOverrides[toolName] !==
-      next.registerToolOverrides[toolName],
-  );
-}
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   // Pi normally calls session_shutdown before reload, but dispose a prior
@@ -41,10 +15,12 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   disposeAll();
   resetDisposed();
 
-  const initial = loadToolDisplayConfig();
-  if (!initial.config.enabled) {
+  const configController = createToolDisplayConfigController(pi);
+  if (!configController.getConfig().enabled) {
     return;
   }
+
+  configureToolDisplayDebugLogger(configController.getDebugRuntimeConfig);
 
   pi.on("session_shutdown", (event: { reason: string }) => {
     if (event.reason === "reload") {
@@ -52,71 +28,39 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
   });
 
-  let config: ToolDisplayConfig = initial.config;
-  let pendingLoadError = initial.error;
-  let capabilities: ToolDisplayCapabilities = {
-    hasMcpTooling: false,
-    hasRtkOptimizer: false,
-  };
-
-  const refreshCapabilities = (): void => {
-    capabilities = detectToolDisplayCapabilities(pi, process.cwd());
-  };
-
-  const getConfig = (): ToolDisplayConfig => config;
-  const getCapabilities = (): ToolDisplayCapabilities => capabilities;
-  const getEffectiveConfig = (): ToolDisplayConfig =>
-    applyCapabilityConfigGuards(config, capabilities);
-
-  const setConfig = (
-    next: ToolDisplayConfig,
-    ctx: ExtensionCommandContext,
-  ): void => {
-    const normalized = normalizeToolDisplayConfig(next);
-    const requiresReload = ownershipChanged(config, normalized);
-    config = normalized;
-
-    const saved = saveToolDisplayConfig(normalized);
-    if (!saved.success && saved.error) {
-      ctx.ui.notify(saved.error, "error");
+  // Refresh config from the session context before the lifecycle handlers below
+  // register deferred tool overrides, so a trusted project config's ownership
+  // and output modes apply in the same session_start pass.
+  pi.on("session_start", async (_event, ctx) => {
+    configController.refreshFromContext(ctx);
+    for (const warning of configController.consumePendingLoadWarnings()) {
+      ctx.ui?.notify?.(warning, "warning");
     }
+  });
 
-    if (requiresReload) {
-      ctx.ui.notify(
-        "Tool ownership updates apply after /reload.",
-        "warning",
-      );
-    }
-  };
-
-  registerToolDisplayOverrides(pi, getEffectiveConfig);
-  registerCodemodeDisplay(pi, getConfig);
-  registerNativeUserMessageBox(pi, getConfig);
+  registerToolDisplayOverrides(pi, configController.getEffectiveConfig);
+  registerCodemodeDisplay(pi, configController.getConfig);
+  registerNativeUserMessageBox(pi, configController.getConfig);
   registerThinkingLabeling(pi);
-  registerToolExecutionMcpPatch(pi, getEffectiveConfig);
+  registerToolExecutionMcpPatch(pi, configController.getEffectiveConfig);
 
   pi.registerCommand("tool-display", {
     description: "Configure tool output rendering (OpenCode-style)",
     handler: async (args, ctx) => {
       const { runToolDisplayCommandHandler } = await import("./config-modal.js");
-      await runToolDisplayCommandHandler(args, ctx, { getConfig, setConfig, getCapabilities });
+      await runToolDisplayCommandHandler(args, ctx, configController);
     },
   });
 
-  pi.on("session_start", async (_event, ctx) => {
-    refreshCapabilities();
-    if (pendingLoadError) {
-      ctx.ui.notify(pendingLoadError, "warning");
-      pendingLoadError = undefined;
-    }
-  });
-
-  pi.on("before_agent_start", async (event) => {
-    refreshCapabilities();
+  pi.on("before_agent_start", async (event, ctx) => {
+    configController.refreshCapabilitiesFromContext(ctx);
 
     // Opt-in: teach the intent-comment convention so the model supplies it
     // without the user having to ask.
-    const systemPrompt = buildBashIntentSystemPrompt(event.systemPrompt, getEffectiveConfig());
+    const systemPrompt = buildBashIntentSystemPrompt(
+      event.systemPrompt,
+      configController.getEffectiveConfig(),
+    );
     if (systemPrompt === undefined) {
       return;
     }
