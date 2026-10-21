@@ -18,7 +18,7 @@ function withTempWorkspace(name: string, run: (workspace: string) => void): void
 }
 
 test("pending write preview compares existing safe workspace files", () => {
-  withTempWorkspace("pi-tool-display-write-preview-", (workspace) => {
+  withTempWorkspace("pi-render-write-preview-", (workspace) => {
     writeFileSync(join(workspace, "sample.txt"), "before\n", "utf8");
 
     const preview = buildPendingWritePreviewData(
@@ -34,8 +34,8 @@ test("pending write preview compares existing safe workspace files", () => {
 });
 
 test("pending preview skips direct reads outside the workspace", () => {
-  withTempWorkspace("pi-tool-display-boundary-", (workspace) => {
-    const outside = mkdtempSync(join(tmpdir(), "pi-tool-display-outside-"));
+  withTempWorkspace("pi-render-boundary-", (workspace) => {
+    const outside = mkdtempSync(join(tmpdir(), "pi-render-outside-"));
     try {
       const outsideFile = join(outside, "secret.txt");
       writeFileSync(outsideFile, "secret\n", "utf8");
@@ -62,7 +62,7 @@ test("pending preview skips direct reads outside the workspace", () => {
 });
 
 test("pending preview skips files over the read-size limit", () => {
-  withTempWorkspace("pi-tool-display-large-preview-", (workspace) => {
+  withTempWorkspace("pi-render-large-preview-", (workspace) => {
     mkdirSync(join(workspace, "nested"));
     const nestedFile = join(workspace, "nested", "large.txt");
     writeFileSync(nestedFile, "x".repeat(1_000_001), "utf8");

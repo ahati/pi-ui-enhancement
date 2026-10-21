@@ -10,7 +10,7 @@
 
 OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi).
 
-`pi-tool-display` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves a few core chat UI details such as thinking labels and the native user prompt box.
+`pi-render` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves a few core chat UI details such as thinking labels and the native user prompt box.
 
 <img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
 
@@ -32,10 +32,12 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
+- **Shiki/TextMate markdown code fence highlighting** with common bundled grammars and configurable Shiki themes
+- **Optional formatted code block panels** that replace raw triple-backtick fences with compact bordered code blocks
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
 - **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
-- **Adapter API for renderer consumers** through the `pi-tool-display/tool-display-api-consumer` subpath export
+- **Adapter API for renderer consumers** through the `pi-render/tool-display-api-consumer` subpath export
 
 ## Installation
 
@@ -45,22 +47,22 @@ Place this folder in one of Pi's auto-discovery locations:
 
 ```text
 # Global default (when PI_CODING_AGENT_DIR is unset)
-~/.pi/agent/extensions/pi-tool-display
+~/.pi/agent/extensions/pi-render
 
 # Project-specific
-.pi/extensions/pi-tool-display
+.pi/extensions/pi-render
 ```
 
 ### npm package
 
 ```bash
-pi install npm:pi-tool-display
+pi install npm:pi-render
 ```
 
 ### Git repository
 
 ```bash
-pi install git:github.com/MasuRii/pi-tool-display
+pi install git:github.com/jiwnchoi/pi-render
 ```
 
 ## Usage
@@ -84,6 +86,7 @@ The modal exposes the day-to-day controls most people change regularly:
 - bash collapsed line count
 - diff layout mode
 - native user message box toggle
+- Shiki code highlighting and code block box toggles
 
 Advanced options remain in `config.json`.
 
@@ -103,13 +106,13 @@ Advanced options remain in `config.json`.
 
 ### Tool display adapter API
 
-Other extensions can opt into `pi-tool-display` rendering without directly depending on its load order by importing the consumer helper:
+Other extensions can opt into `pi-render` rendering without directly depending on its load order by importing the consumer helper:
 
 ```ts
-import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-tool-display/tool-display-api-consumer";
+import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-render/tool-display-api-consumer";
 ```
 
-`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-tool-display` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
+`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-render` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
 
 ## Presets
 
@@ -230,6 +233,9 @@ Effective configuration is merged as defaults → global config → project conf
 | `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
 | `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
+| `enableShikiCodeBlocks` | boolean | `true` | Use Shiki's TextMate grammar renderer for markdown code fences when the language is supported |
+| `formatCodeBlocks` | boolean | `true` | Render markdown code fences as compact bordered code panels instead of raw triple-backtick blocks |
+| `shikiCodeBlockTheme` | string | `"github-dark"` | Shiki theme for code fences: `github-dark`, `github-light`, `dark-plus`, `light-plus`, `min-dark`, `min-light`, `one-dark-pro`, `vitesse-dark`, or `vitesse-light` |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
@@ -274,7 +280,7 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 ### Custom tool overrides
 
-Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-tool-display` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
+Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-render` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
 
 ```json
 {
@@ -298,7 +304,7 @@ Each entry supports:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Whether `pi-tool-display` should decorate this custom tool |
+| `enabled` | boolean | `true` | Whether `pi-render` should decorate this custom tool |
 | `kind` | string | `"generic"` | `generic` for plain compact output, or `mcp` for MCP-style call labels and result handling |
 | `outputMode` | string | `"summary"` | `hidden`, `summary`, or `preview` for this custom tool's result output |
 | `preserveCallRenderer` | boolean | `false` | Keep the tool's native call/header renderer while overriding only its result output |
@@ -349,6 +355,9 @@ Notes:
     }
   },
   "enableNativeUserMessageBox": true,
+  "enableShikiCodeBlocks": true,
+  "formatCodeBlocks": true,
+  "shikiCodeBlockTheme": "github-dark",
   "readOutputMode": "summary",
   "searchOutputMode": "count",
   "mcpOutputMode": "summary",
@@ -397,6 +406,12 @@ When content is available, `write` call summaries include line count and byte si
 ### Thinking labels
 
 Thinking blocks are labeled during streaming and on final messages. Before the next model turn, the extension sanitizes those presentation labels out of the stored assistant context so they do not accumulate or pollute future prompts.
+
+### Markdown code blocks
+
+When enabled, markdown code fences in assistant, user, custom, compaction, and skill messages are rendered through Shiki's TextMate grammars for common languages such as TypeScript, JavaScript, Python, Bash, JSON, Markdown, YAML, HTML/CSS, Rust, Go, Java, Kotlin, Swift, C/C++, C#, Ruby, PHP, SQL, Dockerfile, TOML, XML, Vue, and Svelte.
+
+`formatCodeBlocks` replaces the classic triple-backtick visual wrapper with a compact rounded panel and language label. If Shiki cannot highlight a language, the extension falls back to Pi's built-in markdown highlighter while keeping the configured code block formatting.
 
 ### Native user message box
 
@@ -461,7 +476,7 @@ Those controls only appear when the corresponding capability is available in the
 ## Project structure
 
 ```text
-pi-tool-display/
+pi-render/
 ├── index.ts                         # Extension entrypoint for Pi auto-discovery
 ├── src/
 │   ├── index.ts                     # Bootstrap and extension registration
@@ -474,6 +489,7 @@ pi-tool-display/
 │   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
 │   ├── presets.ts                   # Preset definitions and matching
 │   ├── render-utils.ts              # Shared rendering helpers
+│   ├── shiki-codeblock-renderer.ts  # Shiki/TextMate markdown code fence renderer and formatting patch
 │   ├── thinking-label.ts            # Thinking label formatting and context sanitization
 │   ├── tool-overrides.ts            # Built-in, MCP, and opt-in custom renderer overrides
 │   ├── types.ts                     # Shared config and type definitions

@@ -274,7 +274,7 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 });
 
 test("bash override uses shellPath from Pi settings", async () => {
-	await withTempDir("pi-tool-display-shellpath-", async (dir) => {
+	await withTempDir("pi-render-shellpath-", async (dir) => {
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = dir;
 		writeFileSync(
@@ -306,7 +306,7 @@ test("bash override uses shellPath from Pi settings", async () => {
 });
 
 test("bash override uses shellCommandPrefix from Pi settings", async () => {
-	await withTempDir("pi-tool-display-shellprefix-", async (dir) => {
+	await withTempDir("pi-render-shellprefix-", async (dir) => {
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = dir;
 		writeFileSync(

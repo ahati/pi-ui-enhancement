@@ -89,7 +89,14 @@ function resolveWorkspaceReadPath(
   options?: ReadWorkspaceOptions,
 ): { resolvedPath: string; error?: string } {
   const workspacePath = safeRealpath(cwd);
-  const resolvedPath = resolvePreviewPath(cwd, rawPath);
+  // Resolve symlinked/suffixed cwd inputs (e.g. "/path/dir (copy)") back onto
+  // the real workspace path before the containment check.
+  const workspaceInputPath = resolvePreviewPath(cwd, ".");
+  const rawResolvedPath = resolvePreviewPath(cwd, rawPath);
+  const relativeFromInputWorkspace = relative(workspaceInputPath, rawResolvedPath);
+  const resolvedPath = isWithinWorkspace(workspaceInputPath, rawResolvedPath)
+    ? resolve(workspacePath, relativeFromInputWorkspace)
+    : rawResolvedPath;
   const canonicalResolvedPath = safeRealpath(resolvedPath);
 
   if (!options?.allowExternalDiffPreviews && !isWithinWorkspace(workspacePath, canonicalResolvedPath)) {

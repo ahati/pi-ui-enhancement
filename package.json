@@ -48,16 +48,16 @@
     "diff",
     "output-mode"
   ],
-  "author": "MasuRii",
+  "author": "jiwnchoi",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MasuRii/pi-tool-display.git"
+    "url": "git+https://github.com/jiwnchoi/pi-render.git"
   },
   "bugs": {
-    "url": "https://github.com/MasuRii/pi-tool-display/issues"
+    "url": "https://github.com/jiwnchoi/pi-render/issues"
   },
-  "homepage": "https://github.com/MasuRii/pi-tool-display#readme",
+  "homepage": "https://github.com/jiwnchoi/pi-render#readme",
   "engines": {
     "node": ">=20"
   },
@@ -83,5 +83,8 @@
     "@earendil-works/pi-tui": "^0.80.3",
     "tsx": "4.22.4",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "shiki": "^4.2.0"
   }
 }

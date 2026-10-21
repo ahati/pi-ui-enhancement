@@ -134,7 +134,7 @@ test("effective config ignores untrusted project config and warns", () => {
 });
 
 test("config load reports parse errors and falls back to defaults", () => {
-  withTempDir("pi-tool-display-config-load-", (dir) => {
+  withTempDir("pi-render-config-load-", (dir) => {
     const configFile = join(dir, "config.json");
     writeFileSync(configFile, "{not-json", "utf8");
 
@@ -202,7 +202,7 @@ test("project overlay save disables inherited custom overrides omitted by the ne
 });
 
 test("config save writes normalized JSON and cleans temporary file on failure", () => {
-  withTempDir("pi-tool-display-config-save-", (dir) => {
+  withTempDir("pi-render-config-save-", (dir) => {
     const configFile = join(dir, "config.json");
     const saved = saveToolDisplayConfig(
       { ...DEFAULT_TOOL_DISPLAY_CONFIG, previewLines: 999 },

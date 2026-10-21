@@ -11,7 +11,7 @@ import {
 } from "../src/debug-logger.ts";
 
 async function withTempRoot(run: (root: string) => Promise<void> | void): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), "pi-tool-display-debug-"));
+  const root = mkdtempSync(join(tmpdir(), "pi-render-debug-"));
   try {
     await run(root);
   } finally {

@@ -8,6 +8,7 @@ import { configureToolDisplayDebugLogger } from "./debug-logger.js";
 import { registerThinkingLabeling } from "./thinking-label.js";
 import registerNativeUserMessageBox from "./user-message-box-native.js";
 import registerToolExecutionMcpPatch from "./tool-execution-patch.js";
+import { registerShikiCodeBlockRenderer } from "./shiki-codeblock-renderer.js";
 
 export default function toolDisplayExtension(pi: ExtensionAPI): void {
   // Pi normally calls session_shutdown before reload, but dispose a prior
@@ -43,6 +44,7 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   registerNativeUserMessageBox(pi, configController.getConfig);
   registerThinkingLabeling(pi);
   registerToolExecutionMcpPatch(pi, configController.getEffectiveConfig);
+  registerShikiCodeBlockRenderer(configController.getConfig);
 
   pi.registerCommand("tool-display", {
     description: "Configure tool output rendering (OpenCode-style)",
