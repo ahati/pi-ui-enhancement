@@ -136,8 +136,12 @@ export function createToolDisplayDebugLogger(options: ToolDisplayDebugLoggerOpti
     debugDirectoryReadyFor = currentDebugDir;
   }
 
+  /**
+   * mode applies when the log file is first created, keeping debug output
+   * private to the user (the default would be 0644).
+   */
   function appendLine(debugLogFileForLine: string, line: string): Promise<void> {
-    return fileSystem.appendFile(debugLogFileForLine, line, "utf8");
+    return fileSystem.appendFile(debugLogFileForLine, line, { encoding: "utf8", mode: 0o600 });
   }
 
   return {

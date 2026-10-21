@@ -1,6 +1,18 @@
 import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
 import { resolvePiAgentDir } from "./agent-dir.js";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	constants as fsConstants,
+	existsSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	renameSync,
+	statSync,
+	unlinkSync,
+	writeFileSync,
+	writeSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import {
 	BUILT_IN_TOOL_OVERRIDE_NAMES,
@@ -566,7 +578,20 @@ function writeToolDisplayConfigJson(configFile: string, value: unknown): ConfigS
 
 	try {
 		mkdirSync(dirname(configFile), { recursive: true });
-		writeFileSync(tmpFile, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+		// O_CREAT|O_EXCL refuses a pre-planted tmp-file symlink; O_NOFOLLOW
+		// (non-Windows) refuses a symlinked tmp target; 0o600 keeps config
+		// private. The write happens on the descriptor, then the atomic rename.
+		const noFollow = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
+		const descriptor = openSync(
+			tmpFile,
+			fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | noFollow,
+			0o600,
+		);
+		try {
+			writeSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, null, "utf8");
+		} finally {
+			closeSync(descriptor);
+		}
 		renameSync(tmpFile, configFile);
 		cachedConfigFile = undefined;
 		cachedConfigFingerprint = undefined;
