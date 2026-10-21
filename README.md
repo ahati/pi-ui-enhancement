@@ -3,43 +3,100 @@
 # pi-ui-enhancement
 
 [![npm version](https://img.shields.io/npm/v/pi-ui-enhancement?style=for-the-badge)](https://www.npmjs.com/package/pi-ui-enhancement)
+[![GitHub](https://img.shields.io/badge/GitHub-ahati%2Fpi--ui--enhancement-181717?style=for-the-badge&logo=github)](https://github.com/ahati/pi-ui-enhancement)
 [![License](https://img.shields.io/github/license/ahati/pi-ui-enhancement?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 
-Fork of [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display)
-with all open upstream PRs, selected fork improvements, and new features.
+OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi) — the maintained successor to
+[MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display).
 
-OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi).
-
-`pi-render` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves a few core chat UI details such as thinking labels and the native user prompt box.
-
-<img width="1360" height="752" alt="image" src="https://github.com/user-attachments/assets/777944a2-18b2-4642-b035-2c703a5abb1b" />
-
-<img width="978" height="670" alt="image" src="https://github.com/user-attachments/assets/122b69ce-6c99-4aaa-ba93-236f97a1d8b4" />
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/7d5e36d3-cbe1-4d54-8bed-ae3dbdef870c" />
-<img width="1919" height="566" alt="image" src="https://github.com/user-attachments/assets/68a1619b-62da-480f-8de3-2af441ccf6ff" />
-<img width="1919" height="550" alt="image" src="https://github.com/user-attachments/assets/1d3f0b38-a5b5-47fc-b54b-8b55cc2bfaf1" />
+`pi-ui-enhancement` keeps tool calls compact by default, adds richer diff rendering for file edits, and improves a few core chat UI details such as thinking labels and the native user prompt box.
 
 </div>
 
 ## Features
 
 - **Compact built-in tool rendering** for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write`
-- **MCP-aware rendering** with hidden, summary, and preview modes
-- **Opt-in custom tool overrides** for noisy extension tools, defaulting to generic rendering unless `kind: "mcp"` is selected
-- **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, and narrow-pane width clamping
+- **MCP-aware rendering** with hidden, summary, and preview modes, including render-time support on Pi 0.80.6+ and the official renderer chain on Pi 1.x
+- **Native codemode rendering** with `summary`, `calls`, and `preview` modes — and **file-change diffs inside codemode calls** that never enter the model's context
+- **Adaptive edit/write diffs** with split or unified layouts, syntax highlighting, inline emphasis, explicit or theme-derived colors, and narrow-pane width clamping
 - **Workspace-scoped projected pending edit/write previews** that show `pending edit`, `pending overwrite`, and `pending create` diffs while partial tool calls are still streaming
-- **Progressive collapsed diff hints** that shorten automatically on small terminal widths instead of overflowing
-- **Hashline-anchor diff gutters** that preserve `LINE#HASH` labels from anchored read/edit output when those lines are rendered in diffs
-- **Three presets**: `opencode`, `balanced`, and `verbose`
-- **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
+- **Bash intent headers** — leading `# tool:` / `# intent:` comments render as the call header instead of long flag sets and absolute paths, with optional command truncation
 - **Shiki/TextMate markdown code fence highlighting** with common bundled grammars and configurable Shiki themes
-- **File-change diffs inside codemode calls** — edit and write changes made by `codemode` scripts render as a `File changes` section without entering the model's context
-- **Optional formatted code block panels** that replace raw triple-backtick fences with compact bordered code blocks
+- **Three presets**: `opencode`, `balanced`, and `verbose`
+- **Accent-colored thinking labels** during streaming and final message rendering, with context sanitization so presentation labels never leak into future model turns
+- **Per-tool ownership toggles** plus **project-level config** with trust gating, so this extension coexists with other renderer and tool-owning extensions
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
-- **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
-- **Capability-aware settings** that keep MCP and RTK-specific controls aligned with the current environment
-- **Adapter API for renderer consumers** through the `pi-render/tool-display-api-consumer` subpath export
+- **Adapter API for renderer consumers** through the `pi-ui-enhancement/tool-display-api-consumer` subpath export
+
+## What this fork adds
+
+`pi-ui-enhancement` takes over where the upstream project stopped. `MasuRii/pi-tool-display` last saw activity on **July 3, 2026**, with the `0.5.0` release. Community work continued to arrive after that date — ten pull requests were open at fork time, the oldest opened on June 29, 2026 — and none of them were reviewed or merged. That is not a criticism of the original author, who built a widely used extension and kept it healthy through many releases; it simply means fixes that contributors had already written and tested were not landing. This fork gives that work a home, credits every author, and keeps the extension aligned with Pi releases.
+
+The fork is a drop-in replacement: same `/tool-display` command, same config layout (legacy `pi-tool-display` directories are still read), and the same cross-package adapter API.
+
+### Merged upstream pull requests
+
+All ten pull requests that were open upstream at fork time are merged here:
+
+- **#46 — IdrisGit (Idris Gadi)**: accent-colored collapsed thinking label.
+- **#48 — chrismdp (Chris Parsons)**: `bashCommandMaxChars` truncates the displayed command to a single line.
+- **#49 — mendeljacks (Mendel Jacks)**: `# intent:` / `# tool:` comment headers render as the bash call header, plus the optional system-prompt guideline (`bashIntentMode`).
+- **#50 — w-winter (wren)**: native codemode rendering with `summary`, `calls`, and `preview` modes via `codemodeOutputMode`.
+- **#40 — edahlseng (Eric Dahlseng)**: `allowExternalDiffPreviews` for target files outside the workspace.
+- **#34 — RaviTharuma (Ravi Tharuma)**: built-in tool overrides are deferred to `session_start` / `before_agent_start`, avoiding startup tool conflicts (for example with `pi-patty-bg-tasks`).
+- **#32 — neumie (Jakub Neumann)**: decorate late-registered tools before Pi snapshots them, and `preserveCallRenderer` for custom tool overrides.
+- **#31 — jeremynikolic (Jeremy Nikolic)**: MCP tool rendering through a `ToolExecutionComponent` prototype patch (Pi 0.80.6+).
+- **#28 — pnd280 (Pham Ngoc Duong)**: ownership-detection refactor and isolated temp-dir config tests. Its eager-registration part was superseded by #34; the helpers and tests it introduced are what survived.
+- **#27 — TxHawks (Jonathan Pollak)**: project-level config at `.pi/extensions/pi-ui-enhancement/config.json`, global/project scopes with trust gating, `--global` / `--project` flags, and overlay saves.
+
+### Community fork contributions
+
+- **jiwnchoi (Jiwon Choi, [jiwnchoi/pi-render](https://github.com/jiwnchoi/pi-render))**: Shiki/TextMate code-block rendering (`enableShikiCodeBlocks`, `formatCodeBlocks`, `shikiCodeBlockTheme`) and a fix for diff-preview path resolution when the working directory is a symlink.
+- **MrDaGree**: deferring built-in ownership to `session_start`, independently authored and synthesized with PR #34, plus the Pi 1.1+ `registerToolRenderer` chain so externally owned tools (such as `pi-ssh-remote`) keep compact rendering in any load order.
+
+### Cherry-picked fixes
+
+Ported by hand from community forks, with the original authors credited:
+
+- **PeachIceTea (Jonas Thiem)**: bash result `Text` component caching across partial updates for TUI redraw performance.
+- **Gucvii**: stopped the MCP discovery retry-timer spiral that ran on every agent turn.
+- **neumie (Jakub Neumann)**: secure workspace path resolution — symlink-cycle detection, path canonicalization, and `O_NOFOLLOW` file-descriptor reads with TOCTOU hardening.
+- **leohenon**: explicit diff background colors (`diffAddedBg`, `diffRemovedBg`, and emphasis variants).
+- **maplezzk**: a usable global `enabled` switch; `/tool-display` stays reachable while rendering is disabled.
+- **williamcr01**: Pi 1.x peer-range compatibility (partially taken — the peer range widening).
+- **hyein-cbio**: `pi-codemode-diff`, integrated here as `src/codemode-diff/`: edit/write diffs render inside codemode calls without entering model context (`codemodeShowFileDiffs`).
+
+### Fork maintenance
+
+Maintained by **ahati**. This covers the work that is not a single upstream patch: merging and conflict resolution across all ten pull requests, both community forks, and the cherry-picked fixes — each merge commit documents the decisions taken and what was dropped. On top of that the fork enables TypeScript strict mode across `src/` and `tests/`, rebrands the package to `pi-ui-enhancement` while still reading legacy `pi-tool-display` config paths, targets Pi 1.3 (dev dependencies on `1.3.0`, official `registerToolRenderer` preferred with the prototype patches kept as a 0.8x fallback), and records the full fork-mining survey in [FORK-NOTES.md](docs/FORK-NOTES.md).
+
+### Attribution
+
+| Author | Source | Contribution |
+|--------|--------|--------------|
+| IdrisGit (Idris Gadi) | upstream PR #46 | Accent-colored collapsed thinking label |
+| chrismdp (Chris Parsons) | upstream PR #48 | `bashCommandMaxChars` display truncation |
+| mendeljacks (Mendel Jacks) | upstream PR #49 | `# intent:` / `# tool:` bash headers, `bashIntentMode` |
+| w-winter (wren) | upstream PR #50 | Native codemode rendering, `codemodeOutputMode` |
+| edahlseng (Eric Dahlseng) | upstream PR #40 | `allowExternalDiffPreviews` |
+| RaviTharuma (Ravi Tharuma) | upstream PR #34 | Deferred built-in tool overrides at session lifecycle |
+| neumie (Jakub Neumann) | upstream PR #32 + cherry-pick | Late-tool decoration, `preserveCallRenderer`, symlink-hardened path resolution |
+| pnd280 (Pham Ngoc Duong) | upstream PR #28 | Ownership-detection helpers, isolated config tests |
+| jeremynikolic (Jeremy Nikolic) | upstream PR #31 | MCP rendering via prototype patch (Pi 0.80.6+) |
+| TxHawks (Jonathan Pollak) | upstream PR #27 | Project-level config, scopes, trust gating, overlay saves |
+| jiwnchoi (Jiwon Choi) | jiwnchoi/pi-render | Shiki code blocks, symlinked-cwd preview fix |
+| MrDaGree | MrDaGree/pi-tool-display | Deferred ownership, Pi 1.1 renderer chain |
+| PeachIceTea (Jonas Thiem) | fork cherry-pick | Bash result `Text` caching |
+| Gucvii | fork cherry-pick | Per-turn MCP discovery timer fix |
+| leohenon | fork cherry-pick | Explicit diff background colors |
+| maplezzk | fork cherry-pick | Usable global `enabled` switch |
+| williamcr01 | fork cherry-pick | Pi 1.x peer-range compatibility |
+| hyein-cbio | pi-codemode-diff | Edit/write diffs inside codemode calls |
+| ahati | this fork | Merge and conflict resolution, strict TypeScript, rebrand, Pi 1.3 targeting |
+| MasuRii | pi-tool-display | Original project and base implementation |
+
+The original project is **MasuRii**'s `pi-tool-display`, and it remains the foundation of this package. Its earlier merged contributors — tuansondinh, w-winter, badboiririi, tynanbe, and dependabot — shaped the code this fork started from.
 
 ## Installation
 
@@ -49,23 +106,25 @@ Place this folder in one of Pi's auto-discovery locations:
 
 ```text
 # Global default (when PI_CODING_AGENT_DIR is unset)
-~/.pi/agent/extensions/pi-render
+~/.pi/agent/extensions/pi-ui-enhancement
 
 # Project-specific
-.pi/extensions/pi-render
+.pi/extensions/pi-ui-enhancement
 ```
 
 ### npm package
 
 ```bash
-pi install npm:pi-render
+pi install npm:pi-ui-enhancement
 ```
 
 ### Git repository
 
 ```bash
-pi install git:github.com/jiwnchoi/pi-render
+pi install git:github.com/ahati/pi-ui-enhancement
 ```
+
+When upgrading from `pi-tool-display`, remove the old extension from the same location so both packages do not render the same tools. Your existing config is picked up from the legacy directory automatically.
 
 ## Usage
 
@@ -79,16 +138,18 @@ Open the settings modal:
 
 The modal exposes the day-to-day controls most people change regularly:
 
+- global on/off switch
 - preset profile
 - read output mode
 - grep/find/ls output mode
-- native codemode output (`summary`, `calls`, or `preview`)
+- native codemode output (`summary`, `calls`, or `preview`) and codemode file diffs
 - MCP output mode (when MCP is available)
-- preview line count
-- bash collapsed line count
-- diff layout mode
-- native user message box toggle
+- preview line count and bash collapsed line count
+- bash output mode
+- diff layout mode and diff indicators
+- external diff previews
 - Shiki code highlighting and code block box toggles
+- native user message box toggle
 
 Advanced options remain in `config.json`.
 
@@ -108,13 +169,13 @@ Advanced options remain in `config.json`.
 
 ### Tool display adapter API
 
-Other extensions can opt into `pi-render` rendering without directly depending on its load order by importing the consumer helper:
+Other extensions can opt into `pi-ui-enhancement` rendering without directly depending on its load order by importing the consumer helper:
 
 ```ts
-import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-render/tool-display-api-consumer";
+import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-ui-enhancement/tool-display-api-consumer";
 ```
 
-`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-render` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
+`decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-ui-enhancement` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools. The API symbols themselves keep their original `pi-tool-display.api.v1` names so extensions built against upstream keep working.
 
 On Pi 1.1 and later, `pi-ui-enhancement` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
 
@@ -132,7 +193,7 @@ Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown durin
 - **`balanced`**: compact summaries with line counts and match totals; bash shows line count only
 - **`verbose`**: larger previews for read/search/MCP/bash/codemode output
 
-### Bash Output Modes
+## Bash Output Modes
 
 | Mode | Behavior |
 |------|----------|
@@ -163,14 +224,7 @@ the rest of the UI), the program label, and the intent. **Arguments are omitted 
 
 The label is chosen by the **agent**, which declares it on a second comment line — and it must name the program
 actually being run, exactly as invoked (`gh pr view`, `git status`, `docker compose`). Naming the shell or the
-tool you are calling through (`bash`) says nothing about the command and is worse than omitting the line:
-
-```bash
-# tool: git status
-# intent: check which files are dirty
-git --git-dir=/srv/app/.git --work-tree=/srv/app status --short --untracked-files=all
-```
-
+tool you are calling through (`bash`) says nothing about the command and is worse than omitting the line.
 Omitting `# tool:` is fine — the header then falls back to the program alone, derived from the command. What it
 never does is *guess* a subcommand: a shell command cannot distinguish a subcommand from an argument
 (`grep -r pattern` vs `git status`), and inferring one would require a curated list of programs inside the
@@ -196,7 +250,7 @@ something merely piped into.
 Both comment lines are ordinary shell comments: the renderer strips them for display and they are never
 executed. Only leading **comment** lines matching `# intent:` / `# tool:` are consumed, so executable content
 can never be mistaken for a header; a `description` argument overrides the intent text when a custom shell
-tool supplies one, while `# tool:` still applies.
+tool supplies one, while `# tool:` still applies. The guideline is only appended when a system prompt exists.
 
 | Mode | Behavior |
 |------|----------|
@@ -219,6 +273,9 @@ multi-line command is shown as written:
 `bashIntentShowCommand`'s one-line suffix is omitted while expanded, so the command never appears twice.
 Output expansion is unchanged: `Ctrl+O` reveals the whole output in every `bashOutputMode`, including `summary`.
 
+`bashCommandMaxChars` truncates the *collapsed* command to one line of at most that many characters, with an
+ellipsis and ` ; ` separators instead of line breaks. `0` (the default) shows the full command.
+
 ## Configuration
 
 Runtime configuration is stored at:
@@ -235,6 +292,7 @@ Effective configuration is merged as defaults → global config → project conf
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `enabled` | boolean | `true` | Global switch for all rendering and tool ownership; `/tool-display` stays available when off so it can be turned back on |
 | `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
 | `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
 | `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
@@ -259,6 +317,10 @@ Effective configuration is merged as defaults → global config → project conf
 | `diffSplitMinWidth` | number | `120` | Minimum width before auto mode prefers split diffs |
 | `diffCollapsedLines` | number | `24` | Diff lines shown before collapsing |
 | `diffWordWrap` | boolean | `true` | Wrap long diff lines when needed |
+| `diffAddedBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for added diff rows; invalid values fall back to the theme-derived color |
+| `diffRemovedBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for removed diff rows |
+| `diffAddedEmphasisBg` | string | *(row color)* | Explicit `#RRGGBB` background for emphasized added spans |
+| `diffRemovedEmphasisBg` | string | *(row color)* | Explicit `#RRGGBB` background for emphasized removed spans |
 | `allowExternalDiffPreviews` | boolean | `false` | Allow pending edit/write diff previews for target paths outside workspace |
 | `showTruncationHints` | boolean | `false` | Show truncation indicators for compacted output |
 | `showRtkCompactionHints` | boolean | `false` | Show RTK compaction hints when RTK metadata exists |
@@ -287,7 +349,7 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 ### Custom tool overrides
 
-Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-render` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
+Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-ui-enhancement` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
 
 ```json
 {
@@ -311,7 +373,7 @@ Each entry supports:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Whether `pi-render` should decorate this custom tool |
+| `enabled` | boolean | `true` | Whether `pi-ui-enhancement` should decorate this custom tool |
 | `kind` | string | `"generic"` | `generic` for plain compact output, or `mcp` for MCP-style call labels and result handling |
 | `outputMode` | string | `"summary"` | `hidden`, `summary`, or `preview` for this custom tool's result output |
 | `preserveCallRenderer` | boolean | `false` | Keep the tool's native call/header renderer while overriding only its result output |
@@ -338,6 +400,7 @@ Notes:
 
 ```json
 {
+  "enabled": true,
   "debug": false,
   "registerToolOverrides": {
     "read": true,
@@ -348,19 +411,7 @@ Notes:
     "edit": true,
     "write": true
   },
-  "customToolOverrides": {
-    "ide_find_symbol": {
-      "enabled": true,
-      "kind": "generic",
-      "outputMode": "summary"
-    },
-    "custom_mcp_gateway": {
-      "enabled": true,
-      "kind": "mcp",
-      "outputMode": "preview",
-      "preserveCallRenderer": true
-    }
-  },
+  "customToolOverrides": {},
   "enableNativeUserMessageBox": true,
   "enableShikiCodeBlocks": true,
   "formatCodeBlocks": true,
@@ -368,6 +419,8 @@ Notes:
   "readOutputMode": "summary",
   "searchOutputMode": "count",
   "mcpOutputMode": "summary",
+  "codemodeOutputMode": "calls",
+  "codemodeShowFileDiffs": true,
   "previewLines": 12,
   "expandedPreviewMaxLines": 4000,
   "bashOutputMode": "opencode",
@@ -380,6 +433,8 @@ Notes:
   "diffSplitMinWidth": 120,
   "diffCollapsedLines": 24,
   "diffWordWrap": true,
+  "diffAddedBg": "#1a2f1a",
+  "diffRemovedBg": "#3a1a1a",
   "allowExternalDiffPreviews": false,
   "showTruncationHints": false,
   "showRtkCompactionHints": false
@@ -408,7 +463,7 @@ The diffs are display-only: they are stored in the result's rendering metadata (
 
 `edit` and `write` results use the same diff renderer. In `auto` mode the extension chooses split or unified layout based on available width. On narrow panes it clamps rendered lines and shortens collapsed hint text so the diff stays readable instead of spilling past the terminal width.
 
-While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing. Preview file reads are scoped to the active workspace so pending previews avoid reading paths outside the current project.
+While tool arguments are still streaming, partial `edit` and `write` calls can show projected pending previews. Deterministic edits render as `pending edit` diffs against current file contents, writes render as `pending overwrite` or `pending create`, and unresolved projections show a clear preview notice instead of guessing. Preview file reads are scoped to the active workspace, with symlink-safe canonicalization, unless `allowExternalDiffPreviews` is enabled.
 
 When diff input includes Pi anchored read lines such as `12#AB:content`, the renderer treats the anchor as line metadata and displays the `LINE#HASH` label in the gutter while keeping the content aligned for split, unified, and compact diff layouts.
 
@@ -418,7 +473,7 @@ When content is available, `write` call summaries include line count and byte si
 
 ### Thinking labels
 
-Thinking blocks are labeled during streaming and on final messages. Before the next model turn, the extension sanitizes those presentation labels out of the stored assistant context so they do not accumulate or pollute future prompts.
+Thinking blocks are labeled during streaming and on final messages; the collapsed label uses the theme accent color so it stands out without competing with content. Before the next model turn, the extension sanitizes those presentation labels out of the stored assistant context so they do not accumulate or pollute future prompts.
 
 ### Markdown code blocks
 
@@ -465,16 +520,13 @@ If you still prefer an explicit config, set:
 }
 ```
 
-On Pi 1.1+, built-in tools owned by another extension are instead rendered
-compactly through the Pi tool renderer chain (`registerToolRenderer`): the owner
-keeps its execute logic and pi-ui-enhancement still applies its display renderers,
-in any load order. On older Pi versions the skip behavior above applies.
+On Pi 1.1+, built-in tools owned by another extension are instead rendered compactly through the Pi tool renderer chain (`registerToolRenderer`): the owner keeps its execute logic and `pi-ui-enhancement` still applies its display renderers, in any load order. On older Pi versions the skip behavior above applies.
 
 ### Config not loading
 
 If your settings are not being applied:
 
-1. Check the global Pi tool-display config (default: `~/.pi/agent/extensions/pi-ui-enhancement/config.json`, respects `PI_CODING_AGENT_DIR`)
+1. Check the global config (default: `~/.pi/agent/extensions/pi-ui-enhancement/config.json`, respects `PI_CODING_AGENT_DIR`)
 2. Check the optional project override at `.pi/extensions/pi-ui-enhancement/config.json` (legacy `pi-tool-display` paths are still read)
 3. Make sure the JSON is valid
 4. Make sure you are running Pi 0.79.1 or newer and the project is trusted when expecting project overrides to apply
@@ -482,7 +534,7 @@ If your settings are not being applied:
 
 ### MCP or custom tool rendering not appearing
 
-MCP tools are decorated via `pi.registerTool` interception, so they are captured as soon as they register regardless of lifecycle event ordering. If MCP tools still appear unstyled, check that the tool's name or parameter schema matches one of the supported MCP detection heuristics (names containing `mcp`, `server:`, `ctx_`, or parameter schemas with `mcpServer`/`serverUrl`/`server_name`).
+MCP tools are decorated through `pi.registerTool` interception, so they are captured as soon as they register regardless of lifecycle event ordering; render-time patches and the Pi 1.x renderer chain cover tools registered outside that path. If MCP tools still appear unstyled, check that the tool's name or parameter schema matches one of the supported MCP detection heuristics (names containing `mcp`, `server:`, `ctx_`, or parameter schemas with `mcpServer`/`serverUrl`/`server_name`).
 
 For non-MCP extension tools, or MCP-like tools that do not match the heuristics, add the exact tool name under `customToolOverrides` and run `/reload`. Use `kind: "generic"` for ordinary tools and `kind: "mcp"` for MCP proxy-style arguments.
 
@@ -493,48 +545,32 @@ Those controls only appear when the corresponding capability is available in the
 ## Project structure
 
 ```text
-pi-render/
-├── index.ts                         # Extension entrypoint for Pi auto-discovery
+pi-ui-enhancement/
+├── index.ts                            # Extension entrypoint for Pi auto-discovery
+├── tool-display-api-consumer.{js,d.ts} # Dependency-free adapter for other extensions
 ├── src/
-│   ├── index.ts                     # Bootstrap and extension registration
-│   ├── capabilities.ts              # MCP/RTK capability detection
-│   ├── config-modal.ts              # /tool-display settings UI and command handling
-│   ├── config-store.ts              # Config load/save and normalization
-│   ├── disposable.ts                # Reload-safe cleanup registry for tool overrides, patches, and timers
-│   ├── diff-renderer.ts             # Edit/write diff rendering engine
-│   ├── line-width-safety.ts         # Width clamping helpers for narrow panes
-│   ├── pending-diff-preview.ts      # Partial edit/write preview projection helpers
-│   ├── presets.ts                   # Preset definitions and matching
-│   ├── render-utils.ts              # Shared rendering helpers
-│   ├── shiki-codeblock-renderer.ts  # Shiki/TextMate markdown code fence renderer and formatting patch
-│   ├── thinking-label.ts            # Thinking label formatting and context sanitization
-│   ├── tool-overrides.ts            # Built-in, MCP, and opt-in custom renderer overrides
-│   ├── types.ts                     # Shared config and type definitions
-│   ├── user-message-box-markdown.ts # Markdown extraction for user message rendering
-│   ├── user-message-box-native.ts   # Native user message box registration
-│   ├── user-message-box-patch.ts    # Safe native render patching helpers
-│   ├── user-message-box-renderer.ts # User message border renderer
-│   ├── user-message-box-utils.ts    # ANSI/background normalization helpers
-│   ├── write-display-utils.ts       # Write summary helpers
-│   └── zellij-modal.ts              # Modal UI primitives
-├── config/
-│   └── config.example.json          # Starter config template
-└── tests/
-    ├── ansi-utils.test.ts           # ANSI utility tests including foreground RGB preservation
-    ├── bash-display.test.ts         # Bash display and spinner tests
-    ├── capabilities-edge.test.ts    # Capability detection edge cases
-    ├── config-modal.test.ts         # Config modal tests
-    ├── custom-tool-overrides.test.ts # Opt-in custom tool override tests
-    ├── debug-logger-edge.test.ts    # Debug logger edge cases
-    ├── diff-renderer-ansi.test.ts   # ANSI/background handling tests for diff rendering
-    ├── diff-renderer-edge.test.ts   # Diff renderer edge case tests
-    ├── diff-renderer-width.test.ts  # Width and background coverage tests for diff rendering
-    ├── index-integration.test.ts    # Integration tests for extension lifecycle
-    ├── presets-edge.test.ts         # Preset edge case tests
-    ├── reload-behavior.test.ts      # Reload-safe cleanup and re-registration tests
-    ├── tool-overrides-config.test.ts    # Tool override config tests
-    ├── tool-overrides-registration.test.ts # Tool override registration tests
-    └── tool-ui-utils.test.ts        # Utility tests for user message and diff helpers
+│   ├── index.ts                        # Bootstrap and extension registration
+│   ├── config-controller.ts            # Global/project scopes and trust handling
+│   ├── config-store.ts                 # Config load/save, normalization, legacy path fallback
+│   ├── config-modal.ts                 # /tool-display settings UI and command handling
+│   ├── tool-overrides.ts               # Built-in, MCP, and opt-in custom renderer overrides
+│   ├── tool-execution-patch.ts         # MCP render-time patch and Pi renderer chain
+│   ├── codemode-display.ts             # Native codemode call and result rendering
+│   ├── codemode-diff/                  # Edit/write diff capture for codemode runs
+│   ├── bash-display.ts                 # Bash call header, intent rendering, output modes
+│   ├── bash-intent.ts                  # # intent:/# tool: parsing and prompt guideline
+│   ├── diff-renderer.ts                # Edit/write diff rendering engine
+│   ├── diff-presentation.ts            # Diff colors, layout, and presentation helpers
+│   ├── pending-diff-preview.ts         # Partial edit/write preview projection
+│   ├── shiki-codeblock-renderer.ts     # Shiki/TextMate markdown code fence renderer
+│   ├── thinking-label.ts               # Thinking label formatting and sanitization
+│   ├── user-message-box-*.ts           # Native user message box rendering
+│   ├── disposable.ts                   # Reload-safe cleanup registry
+│   ├── capabilities.ts                 # MCP/RTK capability detection
+│   ├── presets.ts                      # Preset definitions and matching
+│   └── types.ts                        # Shared config and type definitions
+├── config/config.example.json          # Starter config template
+└── tests/                              # 37 test files run with tsx --test
 ```
 
 ## Development
@@ -550,6 +586,8 @@ npm run test
 npm run check
 ```
 
+The codebase is TypeScript in strict mode across `src/` and `tests/`. The fork-mining survey and the reasoning behind which community changes were taken, deferred, or rejected live in [FORK-NOTES.md](docs/FORK-NOTES.md); release-level history is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Related Pi Extensions
 
 - [pi-image-tools](https://github.com/MasuRii/pi-image-tools) — Image attachment and inline preview for the Pi TUI
@@ -559,4 +597,4 @@ npm run check
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). `pi-ui-enhancement` is a fork of [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display); the original copyright and license are preserved, and every incorporated contribution is credited in [What this fork adds](#what-this-fork-adds).
