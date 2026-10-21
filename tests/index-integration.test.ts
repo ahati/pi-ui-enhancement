@@ -98,8 +98,9 @@ test("entry point defers built-in tool overrides until the session lifecycle", a
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
 
-  // PR #34: nothing is registered at load time, so another extension that owns
-  // a built-in (for example pi-patty-bg-tasks owning `bash`) can win cleanly.
+  // PR #34 (which supersedes PR #28's eager path): nothing is registered at
+  // load time, so another extension that owns a built-in (for example
+  // pi-patty-bg-tasks owning `bash`) can win cleanly.
   assert.deepEqual(capturedTools.map((t) => t.name), []);
 
   const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
@@ -351,7 +352,7 @@ test("overridden tools preserve promptSnippet and promptGuidelines from built-in
 
   const byName = new Map(capturedTools.map((t) => [t.name, t]));
 
-  for (const name of ["find", "ls", "write"] as const) {
+  for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} is registered`);
     // promptSnippet should be a non-empty string or undefined

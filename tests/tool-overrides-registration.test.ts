@@ -89,6 +89,44 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 	return { api, registeredTools, eventHandlers };
 }
 
+function createExtensionApiStubWithoutLoadTimeToolDiscovery(): {
+	api: ExtensionAPI;
+	registeredTools: RegisteredToolLike[];
+	eventHandlers: ToolEventHandlers;
+} {
+	const registeredTools: RegisteredToolLike[] = [];
+	const eventHandlers: ToolEventHandlers = {};
+	const api = {
+		registerTool(tool: RegisteredToolLike): void {
+			registeredTools.push(tool);
+		},
+		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
+			eventHandlers[event] = handler;
+		},
+		getAllTools(): unknown[] {
+			throw new Error("Extension runtime not initialized.");
+		},
+	} as unknown as ExtensionAPI;
+
+	return { api, registeredTools, eventHandlers };
+}
+
+test("registerToolDisplayOverrides survives unavailable load-time discovery and registers before the first render", async () => {
+	const { api, registeredTools, eventHandlers } = createExtensionApiStubWithoutLoadTimeToolDiscovery();
+
+	// PR #34 defers registration; a discovery failure at load time must not throw
+	// and must not prevent the lifecycle pass from registering the renderers.
+	assert.doesNotThrow(() => registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG));
+	assert.deepEqual(registeredTools, []);
+
+	await eventHandlers.before_agent_start?.();
+
+	assert.deepEqual(
+		registeredTools.map((tool) => tool.name).sort(),
+		["bash", "edit", "find", "grep", "ls", "read", "write"],
+	);
+});
+
 test("registerToolDisplayOverrides copies built-in prompt metadata onto overridden tools", async () => {
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
 

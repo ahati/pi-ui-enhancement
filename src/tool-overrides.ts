@@ -1610,32 +1610,48 @@ export function registerToolDisplayOverrides(
   const writeExecutionMetaByToolCallId = new Map<string, WriteExecutionMeta>();
   const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
 
-  const isExternallyOwnedBuiltInTool = (toolName: BuiltInToolOverrideName): boolean => {
-    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery unavailable during extension load; registering renderer for pre-bind history rendering.");
-    if (!allTools) {
-      return false;
-    }
-
-    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
-    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
-    const source = getTextField(sourceInfo, "source");
-    if (currentOwner && source && source !== "builtin") {
-      logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", {
-        toolName,
-        source,
-        path: getTextField(sourceInfo, "path") ?? "unknown",
-      });
-      return true;
-    }
-
-    return false;
-  };
-
   // Built-in overrides are collected at load time and applied after all
   // extensions have registered tools. Immediate registration races with
   // packages like pi-patty-bg-tasks that also own `bash`, producing a hard
   // "Tool \"bash\" conflicts with ..." diagnostic at startup.
   const pendingBuiltInToolOverrides = new Map<BuiltInToolOverrideName, () => void>();
+
+  const getExternalBuiltInToolOwner = (
+    toolName: BuiltInToolOverrideName,
+  ): { toolName: BuiltInToolOverrideName; source: string; path: string } | undefined => {
+    const allTools = tryGetAllTools(
+      pi,
+      "Built-in tool override ownership discovery unavailable during load.",
+    );
+    if (!allTools) {
+      return undefined;
+    }
+
+    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
+    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
+    const source = getTextField(sourceInfo, "source");
+    if (!currentOwner || !source || source === "builtin") {
+      return undefined;
+    }
+
+    return {
+      toolName,
+      source,
+      path: getTextField(sourceInfo, "path") ?? "unknown",
+    };
+  };
+
+  const shouldSkipBuiltInToolOverride = (
+    toolName: BuiltInToolOverrideName,
+  ): boolean => {
+    const externalOwner = getExternalBuiltInToolOwner(toolName);
+    if (!externalOwner) {
+      return false;
+    }
+
+    logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", externalOwner);
+    return true;
+  };
 
   const registerIfOwned = (
     toolName: BuiltInToolOverrideName,
@@ -1657,7 +1673,7 @@ export function registerToolDisplayOverrides(
       if (
         registeredBuiltInToolOverrides.has(toolName) ||
         !getConfig().registerToolOverrides[toolName] ||
-        isExternallyOwnedBuiltInTool(toolName)
+        shouldSkipBuiltInToolOverride(toolName)
       ) {
         continue;
       }

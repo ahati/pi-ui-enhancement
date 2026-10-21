@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   UserMessageComponent,
@@ -86,7 +88,7 @@ function createApiStub(
 
 /**
  * Create a stub for registerToolDisplayOverrides tests that need event-driven
- * deferred registration (read/edit/grep deferral).
+ * post-load registration safety checks.
  */
 function createExtensionApiStub(allTools: unknown[] = []): {
   api: ExtensionAPI;
@@ -108,6 +110,15 @@ function createExtensionApiStub(allTools: unknown[] = []): {
   } as unknown as ExtensionAPI;
 
   return { api, registeredTools, eventHandlers };
+}
+
+function withTempDir(name: string, run: (dir: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), name));
+  try {
+    run(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** Minimal theme stub for render calls. */
@@ -179,18 +190,12 @@ test("2: built-in tool overrides are re-registered on reload", async () => {
   for (const tool of capturedTools) {
     toolNameCounts.set(tool.name, (toolNameCounts.get(tool.name) ?? 0) + 1);
   }
-  assert.ok(
-    (toolNameCounts.get("find") ?? 0) >= 2,
-    "find is registered at least twice (two calls)",
-  );
-  assert.ok(
-    (toolNameCounts.get("ls") ?? 0) >= 2,
-    "ls is registered at least twice (two calls)",
-  );
-  assert.ok(
-    (toolNameCounts.get("write") ?? 0) >= 2,
-    "write is registered at least twice (two calls)",
-  );
+  for (const name of ["bash", "edit", "find", "grep", "ls", "read", "write"] as const) {
+    assert.ok(
+      (toolNameCounts.get(name) ?? 0) >= 2,
+      `${name} is registered at least twice (two calls)`,
+    );
+  }
 });
 
 test("2: re-registered tools have renderCall and renderResult functions after reload", () => {
@@ -206,9 +211,6 @@ test("2: re-registered tools have renderCall and renderResult functions after re
 
   if (secondCallTools.length > 0) {
     for (const tool of secondCallTools) {
-      if (tool.name === "read" || tool.name === "edit" || tool.name === "grep") {
-        continue; // Deferred - not registered immediately
-      }
       assert.ok(
         typeof tool.renderCall === "function",
         `${tool.name} from reload has renderCall`,
@@ -223,6 +225,7 @@ test("2: re-registered tools have renderCall and renderResult functions after re
 
 test("2: built-in tool overrides register on lifecycle events and re-register on reload", async () => {
   const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+  const expectedBuiltIns = ["bash", "edit", "find", "grep", "ls", "read", "write"];
 
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
   assert.equal(registeredTools.length, 0, "no built-ins registered before lifecycle events");
@@ -912,7 +915,7 @@ test("11: registerToolDisplayOverrides creates fresh state on each call", () => 
   // Each call to registerToolDisplayOverrides creates new:
   // - builtInToolCache (cleared)
   // - registeredBuiltInToolOverrides Set
-  // - deferredBuiltInToolOverrides Map
+  // - deferredBuiltInToolOverrides Map used for post-load safety checks
   // - wrappedMcpToolNames Set
   // - ToolDisplayApi on globalThis
 
@@ -961,7 +964,7 @@ test("11: each tool override call clones parameters independently", () => {
     registeredTools.map((t) => [t.name, t.parameters]),
   );
 
-  // Trigger deferred registration
+  // Trigger the post-load registration safety pass
   eventHandlers.before_agent_start?.();
 
   const firstAllParamRefs = new Map(
@@ -1000,39 +1003,42 @@ test("11: each tool override call clones parameters independently", () => {
 // ---------------------------------------------------------------------------
 
 test("12: config-store reloads config on fingerprint change between calls", () => {
-  const configUrl = new URL("../config.json", import.meta.url);
-  const originalConfigJson = readFileSync(configUrl, "utf8");
+  withTempDir("pi-tool-display-reload-config-", (dir) => {
+    const configFile = join(dir, "config.json");
+    const initialResult = loadToolDisplayConfig(configFile);
 
-  try {
-    const initialResult = loadToolDisplayConfig();
+    assert.deepEqual(
+      initialResult.config,
+      DEFAULT_TOOL_DISPLAY_CONFIG,
+      "missing isolated config loads defaults",
+    );
 
-    // Config is cached, but if we change the file, fingerprint changes.
-    // Since local extension config can intentionally differ from defaults,
-    // verify loading returns a valid config and save/reload preserves it.
-    assert.ok(initialResult.config, "config loaded successfully");
-    assert.equal(typeof initialResult.config.readOutputMode, "string");
-    assert.equal(typeof initialResult.config.searchOutputMode, "string");
+    const changedConfig: ToolDisplayConfig = {
+      ...DEFAULT_TOOL_DISPLAY_CONFIG,
+      readOutputMode: "summary",
+      searchOutputMode: "count",
+    };
+    writeFileSync(configFile, `${JSON.stringify(changedConfig, null, 2)}\n`, "utf8");
 
-    // saveToolDisplayConfig clears the cache, forcing a re-read
-    const saveResult = saveToolDisplayConfig(initialResult.config);
+    const afterFileChangeResult = loadToolDisplayConfig(configFile);
+    assert.equal(
+      afterFileChangeResult.config.readOutputMode,
+      "summary",
+      "fingerprint change causes a re-read from disk",
+    );
+    assert.equal(afterFileChangeResult.config.searchOutputMode, "count");
+
+    // saveToolDisplayConfig clears the cache, forcing the next load to re-read.
+    const saveResult = saveToolDisplayConfig(DEFAULT_TOOL_DISPLAY_CONFIG, configFile);
     assert.ok(saveResult.success, "config saved successfully (cache cleared)");
 
-    // After save, cache is cleared. Next load re-reads from disk.
-    const afterSaveResult = loadToolDisplayConfig();
-    assert.ok(afterSaveResult.config, "config re-loaded after cache clear");
-    assert.equal(
-      afterSaveResult.config.readOutputMode,
-      initialResult.config.readOutputMode,
-      "re-loaded read output mode matches saved config",
+    const afterSaveResult = loadToolDisplayConfig(configFile);
+    assert.deepEqual(
+      afterSaveResult.config,
+      DEFAULT_TOOL_DISPLAY_CONFIG,
+      "re-loaded config matches saved config",
     );
-    assert.equal(
-      afterSaveResult.config.searchOutputMode,
-      initialResult.config.searchOutputMode,
-      "re-loaded search output mode matches saved config",
-    );
-  } finally {
-    writeFileSync(configUrl, originalConfigJson, "utf8");
-  }
+  });
 });
 
 test("12: extension loads config fresh on each call (no stale cache)", () => {
@@ -1231,7 +1237,7 @@ test("lifecycle: full session lifecycle (init→reload→invoke handlers) does n
 test("reload behavior test suite: summary of all tests", () => {
   const testNames = [
     "1: Basic reload detection",
-    "2: Tool override restoration (re-registration + deferred)",
+    "2: Tool override restoration (immediate re-registration)",
     "3: Bash override cleanup (spinner timer lifecycle)",
     "4: MCP override cleanup (re-decoration on reload)",
     "5: User message box cleanup (prototype re-patching)",
