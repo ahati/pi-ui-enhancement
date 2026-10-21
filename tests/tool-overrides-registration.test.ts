@@ -67,16 +67,32 @@ function withDefaultReadEditOwners(tools: unknown[] = []): unknown[] {
 	return [...defaults, ...tools];
 }
 
+interface ToolRendererChainEntryLike {
+	renderShell?: unknown;
+	renderCall?: (...args: unknown[]) => unknown;
+	renderResult?: (...args: unknown[]) => unknown;
+}
+
+type ToolRendererChainResolverLike = (
+	toolName: string,
+	next: () => ToolRendererChainEntryLike | undefined,
+) => ToolRendererChainEntryLike | undefined;
+
 function createExtensionApiStub(allTools: unknown[] = []): {
 	api: ExtensionAPI;
 	registeredTools: RegisteredToolLike[];
 	eventHandlers: ToolEventHandlers;
+	rendererResolvers: ToolRendererChainResolverLike[];
 } {
 	const registeredTools: RegisteredToolLike[] = [];
 	const eventHandlers: ToolEventHandlers = {};
+	const rendererResolvers: ToolRendererChainResolverLike[] = [];
 	const api = {
 		registerTool(tool: RegisteredToolLike): void {
 			registeredTools.push(tool);
+		},
+		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
+			rendererResolvers.push(resolver);
 		},
 		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
 			eventHandlers[event] = handler;
@@ -86,7 +102,7 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 		},
 	} as unknown as ExtensionAPI;
 
-	return { api, registeredTools, eventHandlers };
+	return { api, registeredTools, eventHandlers, rendererResolvers };
 }
 
 function createExtensionApiStubWithoutLoadTimeToolDiscovery(): {
@@ -271,6 +287,127 @@ test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools 
 	assert.equal(registeredNames.has("ls"), true);
 	assert.equal(registeredNames.has("bash"), true);
 	assert.equal(registeredNames.has("write"), true);
+});
+
+test("externally owned tools keep their execute and render through the Pi tool renderer chain", async () => {
+	const { api, registeredTools, eventHandlers, rendererResolvers } = createExtensionApiStub([
+		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+	]);
+
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+
+	// Ownership resolves on the session lifecycle, after every extension has
+	// registered its tools (PR #34 semantics kept from the upstream merges).
+	assert.equal(registeredTools.length, 0, "nothing is registered at load time");
+	await eventHandlers.before_agent_start?.();
+
+	assert.equal(registeredTools.some((tool) => tool.name === "read"), false);
+	assert.equal(rendererResolvers.length, 1);
+	const resolver = rendererResolvers[0];
+
+	const remoteRenderCall = () => "remote-render";
+	const resolvedRead = resolver("read", () => ({ renderCall: remoteRenderCall }));
+	assert.ok(resolvedRead);
+	assert.notEqual(resolvedRead.renderCall, remoteRenderCall, "chain replaces the owner's renderer");
+	assert.equal(typeof resolvedRead.renderResult, "function");
+
+	assert.equal(resolver("edit", () => undefined)?.renderShell, "default");
+	assert.equal(resolver("remote", () => undefined), undefined, "unknown tools pass through");
+
+	const registeredWrite = registeredTools.find((tool) => tool.name === "write");
+	assert.ok(registeredWrite, "expected owned write to stay registered");
+	const resolvedWrite = resolver("write", () => ({ renderCall: () => "base" }));
+	assert.equal(resolvedWrite?.renderCall, registeredWrite.renderCall, "owned tools keep the registered renderer");
+});
+
+interface LateBoundApiStub {
+	api: ExtensionAPI;
+	registeredTools: RegisteredToolLike[];
+	eventHandlers: ToolEventHandlers;
+	rendererResolvers: ToolRendererChainResolverLike[];
+	bindToolRegistry(tools: unknown[]): void;
+}
+
+// Pi wires pi.getAllTools() after extension load, so ownership is unknown while
+// extensions load. This stub throws until the registry is bound.
+function createLateBoundExtensionApiStub(): LateBoundApiStub {
+	const registeredTools: RegisteredToolLike[] = [];
+	const eventHandlers: ToolEventHandlers = {};
+	const rendererResolvers: ToolRendererChainResolverLike[] = [];
+	let toolRegistry: unknown[] | undefined;
+	const api = {
+		registerTool(tool: RegisteredToolLike): void {
+			registeredTools.push(tool);
+		},
+		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
+			rendererResolvers.push(resolver);
+		},
+		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
+			eventHandlers[event] = handler;
+		},
+		getAllTools(): unknown[] {
+			if (!toolRegistry) {
+				throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
+			}
+			return withDefaultReadEditOwners(toolRegistry);
+		},
+	} as unknown as ExtensionAPI;
+
+	return {
+		api,
+		registeredTools,
+		eventHandlers,
+		rendererResolvers,
+		bindToolRegistry(tools: unknown[]): void {
+			toolRegistry = tools;
+		},
+	};
+}
+
+test("registerToolDisplayOverrides defers ownership to session start and never shadows another extension's tools", async () => {
+	const { api, registeredTools, eventHandlers, rendererResolvers, bindToolRegistry } =
+		createLateBoundExtensionApiStub();
+
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	assert.deepEqual(registeredTools, [], "no built-in tool registers while ownership is unknown");
+	assert.equal(rendererResolvers.length, 1, "renderers are captured for the renderer chain during load");
+
+	bindToolRegistry([
+		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+		{ name: "write", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+		{ name: "bash", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
+	]);
+	await eventHandlers.session_start?.();
+
+	const registeredNames = new Set(registeredTools.map((tool) => tool.name));
+	assert.deepEqual(
+		[...registeredNames].sort(),
+		["find", "grep", "ls"],
+		"only unowned built-ins register after the registry is known",
+	);
+
+	const resolver = rendererResolvers[0];
+	const remoteRenderCall = () => "remote-render";
+	const resolvedRead = resolver("read", () => ({ renderCall: remoteRenderCall }));
+	assert.ok(resolvedRead);
+	assert.notEqual(resolvedRead.renderCall, remoteRenderCall, "read still renders through tool-display");
+});
+
+test("registerToolDisplayOverrides registers built-in overrides at session start when no extension owns them", async () => {
+	const { api, registeredTools, eventHandlers, bindToolRegistry } = createLateBoundExtensionApiStub();
+
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	assert.deepEqual(registeredTools, []);
+
+	bindToolRegistry([]);
+	await eventHandlers.session_start?.();
+
+	assert.deepEqual(
+		registeredTools.map((tool) => tool.name).sort(),
+		["bash", "edit", "find", "grep", "ls", "read", "write"],
+	);
 });
 
 test("bash override uses shellPath from Pi settings", async () => {

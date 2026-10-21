@@ -163,6 +163,8 @@ const TOOL_DISPLAY_DECORATED_PROPERTIES = [
 
 type ToolDisplayKind = "read" | "edit" | "mcp" | "generic";
 
+type BuiltInToolOwnership = "free" | "external" | "unknown";
+
 export interface ToolDisplayAdapter {
   id?: string;
   toolName?: string;
@@ -209,6 +211,33 @@ const decoratedTools = new Set<RuntimeToolDefinition>();
 
 function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
   pi.registerTool(tool as unknown as ToolDefinition);
+}
+
+type ToolRendererChainEntry = Pick<RuntimeToolDefinition, "renderCall" | "renderResult" | "renderShell">;
+
+type ToolRendererChainResolver = (
+  toolName: string,
+  next: () => ToolRendererChainEntry | undefined,
+) => ToolRendererChainEntry | undefined;
+
+// Pi >= 1.1 resolves tool renderers at render time through this chain, so a
+// renderer here applies even when another extension owns the tool's execute.
+type PiWithToolRendererChain = ExtensionAPI & {
+  registerToolRenderer?: (resolver: ToolRendererChainResolver) => void;
+};
+
+function pickToolRenderers(tool: RuntimeToolDefinition): ToolRendererChainEntry {
+  const entry: ToolRendererChainEntry = {};
+  if (typeof tool.renderCall === "function") {
+    entry.renderCall = tool.renderCall;
+  }
+  if (typeof tool.renderResult === "function") {
+    entry.renderResult = tool.renderResult;
+  }
+  if (typeof tool.renderShell === "string") {
+    entry.renderShell = tool.renderShell;
+  }
+  return entry;
 }
 
 function captureToolPropertyDescriptors(
@@ -1610,47 +1639,73 @@ export function registerToolDisplayOverrides(
   const writeExecutionMetaByToolCallId = new Map<string, WriteExecutionMeta>();
   const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
 
+  // "free": this extension may own the tool. "external": another extension owns
+  // it. "unknown": Pi has not built the tool registry yet, which is the normal
+  // state while extensions load.
+  const discoverBuiltInToolOwnership = (
+    toolName: BuiltInToolOverrideName,
+  ): BuiltInToolOwnership => {
+    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery is unavailable; deferring the ownership decision until the session starts.");
+    if (!allTools) {
+      return "unknown";
+    }
+
+    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
+    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
+    const source = getTextField(sourceInfo, "source");
+    if (currentOwner && source && source !== "builtin") {
+      logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", {
+        toolName,
+        source,
+        path: getTextField(sourceInfo, "path") ?? "unknown",
+      });
+      return "external";
+    }
+
+    return "free";
+  };
+
   // Built-in overrides are collected at load time and applied after all
   // extensions have registered tools. Immediate registration races with
   // packages like pi-patty-bg-tasks that also own `bash`, producing a hard
   // "Tool \"bash\" conflicts with ..." diagnostic at startup.
   const pendingBuiltInToolOverrides = new Map<BuiltInToolOverrideName, () => void>();
 
-  const getExternalBuiltInToolOwner = (
+  // Renderer-only entries for built-ins another extension owns (for example
+  // pi-ssh-remote routing read/bash/edit/write to a remote host). They keep
+  // their owner's execute and get pi-tool-display rendering through the Pi
+  // tool renderer chain on Pi >= 1.1.
+  const capturedBuiltInRenderers = new Map<BuiltInToolOverrideName, ToolRendererChainEntry>();
+
+  // Running the registration always captures this extension's renderers, so the
+  // Pi tool renderer chain can apply them. Registration itself is suppressed for
+  // tools another extension owns, which keeps that extension's execute logic.
+  const runBuiltInToolRegistration = (
     toolName: BuiltInToolOverrideName,
-  ): { toolName: BuiltInToolOverrideName; source: string; path: string } | undefined => {
-    const allTools = tryGetAllTools(
-      pi,
-      "Built-in tool override ownership discovery unavailable during load.",
-    );
-    if (!allTools) {
-      return undefined;
+    register: () => void,
+    suppressRegistration: boolean,
+  ): void => {
+    const originalRegisterTool = pi.registerTool;
+    pi.registerTool = ((tool: ToolDefinition) => {
+      const candidate = toRecord(tool);
+      if (getTextField(candidate, "name") === toolName) {
+        capturedBuiltInRenderers.set(toolName, pickToolRenderers(candidate));
+      }
+      if (!suppressRegistration) {
+        originalRegisterTool.call(pi, tool);
+      }
+    }) as ExtensionAPI["registerTool"];
+
+    try {
+      register();
+    } finally {
+      pi.registerTool = originalRegisterTool;
     }
 
-    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
-    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
-    const source = getTextField(sourceInfo, "source");
-    if (!currentOwner || !source || source === "builtin") {
-      return undefined;
+    if (!suppressRegistration) {
+      registeredBuiltInToolOverrides.add(toolName);
     }
-
-    return {
-      toolName,
-      source,
-      path: getTextField(sourceInfo, "path") ?? "unknown",
-    };
-  };
-
-  const shouldSkipBuiltInToolOverride = (
-    toolName: BuiltInToolOverrideName,
-  ): boolean => {
-    const externalOwner = getExternalBuiltInToolOwner(toolName);
-    if (!externalOwner) {
-      return false;
-    }
-
-    logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", externalOwner);
-    return true;
+    pendingBuiltInToolOverrides.delete(toolName);
   };
 
   const registerIfOwned = (
@@ -1668,18 +1723,33 @@ export function registerToolDisplayOverrides(
     pendingBuiltInToolOverrides.set(toolName, register);
   };
 
-  const registerDeferredBuiltInToolOverrides = (): void => {
-    for (const [toolName, register] of pendingBuiltInToolOverrides) {
+  const resolvePendingBuiltInToolOwnership = (): void => {
+    for (const [toolName, register] of [...pendingBuiltInToolOverrides]) {
       if (
         registeredBuiltInToolOverrides.has(toolName) ||
-        !getConfig().registerToolOverrides[toolName] ||
-        shouldSkipBuiltInToolOverride(toolName)
+        !getConfig().registerToolOverrides[toolName]
       ) {
+        pendingBuiltInToolOverrides.delete(toolName);
         continue;
       }
 
-      register();
-      registeredBuiltInToolOverrides.add(toolName);
+      const ownership = discoverBuiltInToolOwnership(toolName);
+      if (ownership === "external") {
+        // Capture this extension's renderers without registering, so the Pi
+        // tool renderer chain can still apply them to the owner's tool.
+        runBuiltInToolRegistration(toolName, register, true);
+        continue;
+      }
+
+      if (ownership === "unknown") {
+        // Ownership stays unknown only when the registry is still unavailable.
+        // Register so display rendering keeps working.
+        logToolDisplayDebug("Built-in tool ownership is still unknown; registering the display override.", { toolName });
+        runBuiltInToolRegistration(toolName, register, false);
+        continue;
+      }
+
+      runBuiltInToolRegistration(toolName, register, false);
     }
   };
 
@@ -2141,6 +2211,23 @@ export function registerToolDisplayOverrides(
     });
   };
 
+  const registerBuiltInToolRendererChain = (): void => {
+    // Peer range includes Pi < 1.1, where registerToolRenderer is absent at runtime.
+    const registerToolRenderer = (pi as PiWithToolRendererChain).registerToolRenderer;
+    if (!registerToolRenderer) {
+      return;
+    }
+
+    registerToolRenderer.call(pi as PiWithToolRendererChain, (toolName, next) => {
+      const ours = capturedBuiltInRenderers.get(toolName as BuiltInToolOverrideName);
+      if (!ours || !getConfig().registerToolOverrides[toolName as BuiltInToolOverrideName]) {
+        return next();
+      }
+      return { ...next(), ...ours };
+    });
+  };
+  registerBuiltInToolRendererChain();
+
   installMcpRegistrationInterceptor();
 
   const registerMcpToolOverrides = (): void => {
@@ -2177,13 +2264,13 @@ export function registerToolDisplayOverrides(
 
   pi.on("session_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
-    registerDeferredBuiltInToolOverrides();
+    resolvePendingBuiltInToolOwnership();
     registerMcpToolOverrides();
     scheduleMcpToolOverrideDiscovery();
   });
   pi.on("before_agent_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
-    registerDeferredBuiltInToolOverrides();
+    resolvePendingBuiltInToolOwnership();
     registerMcpToolOverrides();
     scheduleMcpToolOverrideDiscovery();
   });

@@ -114,6 +114,10 @@ import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-render/too
 
 `decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-render` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
 
+On Pi 1.1 and later, `pi-tool-display` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
+
+Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown during load. `pi-tool-display` therefore defers built-in tool registration to the `session_start` event and registers only the tools no other extension owns. This avoids the `Tool "read" conflicts with ...` startup diagnostic and keeps the other extension's execute logic in charge.
+
 ## Presets
 
 | Preset | Read Output | Search Output | MCP Output | Bash Output | Codemode Output | Preview Lines | Bash Lines |
@@ -452,6 +456,10 @@ If you still prefer an explicit config, set:
 }
 ```
 
+On Pi 1.1+, built-in tools owned by another extension are instead rendered
+compactly through the Pi tool renderer chain (`registerToolRenderer`): the owner
+keeps its execute logic and pi-tool-display still applies its display renderers,
+in any load order. On older Pi versions the skip behavior above applies.
 
 ### Config not loading
 

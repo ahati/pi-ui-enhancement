@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decorate tools registered by later-loaded extensions before Pi snapshots their definitions.
 - Track decorated tool objects by identity and restore interception state across reloads and defensive double loads.
 - Actually defer built-in tool override registration (`read`/`grep`/`find`/`ls`/`bash`/`edit`/`write`) until `session_start` / `before_agent_start`, and re-evaluate ownership against the full tool graph before registering. This prevents hard startup conflicts when another extension owns `bash` (e.g. `pi-patty-bg-tasks`), which previously raced because overrides were still registered at extension load time despite README claims of deferred discovery.
+- Deferred built-in tool registration to `session_start`, when Pi exposes the tool registry. Registering at load time made `pi-tool-display` and an extension that owns `read`, `edit`, `write`, or `bash` (such as `pi-ssh-remote`) report `Tool "read" conflicts with ...` on every start, and the extension loaded last replaced the other one's execute logic.
 
+### Changed
+- Applied built-in tool display renderers through the Pi tool renderer chain (`registerToolRenderer`, Pi 1.1+) so extensions that own the execute side of `read`, `grep`, `find`, `ls`, `bash`, `edit`, or `write` — such as `pi-ssh-remote` routing tools to a remote host — keep compact rendering in any load order. On Pi versions without the renderer chain, externally owned tools keep the previous skip behavior.
 
 ## [0.5.0] - 2026-07-03
 
