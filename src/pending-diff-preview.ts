@@ -1,6 +1,16 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  realpathSync,
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 
 export interface PendingDiffPreviewData {
   filePath: string;
@@ -83,57 +93,86 @@ export interface ReadWorkspaceOptions {
   allowExternalDiffPreviews?: boolean;
 }
 
+type CanonicalPathResult =
+  | { ok: true; path: string }
+  | { ok: false; error: string };
+
+/**
+ * Canonicalizes a path that may not exist yet by resolving symlinks on the
+ * longest existing ancestor and re-appending the missing segments. Detects
+ * symlink cycles and bounded depth (ported from neumie's fork).
+ */
+function canonicalizePotentialPath(path: string): CanonicalPathResult {
+  let candidate = resolve(path);
+  const missingSegments: string[] = [];
+  const visited = new Set<string>();
+
+  for (let depth = 0; depth < 64; depth++) {
+    if (visited.has(candidate)) {
+      return { ok: false, error: `Unable to resolve '${path}': symbolic link cycle detected` };
+    }
+    visited.add(candidate);
+
+    try {
+      return { ok: true, path: resolve(realpathSync(candidate), ...missingSegments) };
+    } catch {
+      try {
+        if (lstatSync(candidate).isSymbolicLink()) {
+          const link = readlinkSync(candidate);
+          candidate = isAbsolute(link) ? link : resolve(dirname(candidate), link);
+          continue;
+        }
+      } catch {
+        // Walk upward until an existing ancestor or symlink can be resolved.
+      }
+
+      const parent = dirname(candidate);
+      if (parent === candidate) {
+        return { ok: false, error: `Unable to resolve '${path}'` };
+      }
+      missingSegments.unshift(basename(candidate));
+      candidate = parent;
+    }
+  }
+
+  return { ok: false, error: `Unable to resolve '${path}': symbolic link depth exceeded` };
+}
+
 function resolveWorkspaceReadPath(
   cwd: string,
   rawPath: string,
   options?: ReadWorkspaceOptions,
-): { resolvedPath: string; error?: string } {
+): { resolvedPath: string; exists: boolean; error?: string } {
   const workspacePath = safeRealpath(cwd);
   // Resolve symlinked/suffixed cwd inputs (e.g. "/path/dir (copy)") back onto
-  // the real workspace path before the containment check.
+  // the real workspace path before the containment check (jiwnchoi's remap).
   const workspaceInputPath = resolvePreviewPath(cwd, ".");
   const rawResolvedPath = resolvePreviewPath(cwd, rawPath);
   const relativeFromInputWorkspace = relative(workspaceInputPath, rawResolvedPath);
-  const resolvedPath = isWithinWorkspace(workspaceInputPath, rawResolvedPath)
+  const requestedPath = isWithinWorkspace(workspaceInputPath, rawResolvedPath)
     ? resolve(workspacePath, relativeFromInputWorkspace)
     : rawResolvedPath;
-  const canonicalResolvedPath = safeRealpath(resolvedPath);
+  const lexicalPath = resolvePreviewPath(workspacePath, rawPath);
 
-  if (!options?.allowExternalDiffPreviews && !isWithinWorkspace(workspacePath, canonicalResolvedPath)) {
+  const canonical = canonicalizePotentialPath(requestedPath);
+  if (!canonical.ok) {
+    return { resolvedPath: requestedPath, exists: false, error: canonical.error };
+  }
+
+  if (!options?.allowExternalDiffPreviews && !isWithinWorkspace(workspacePath, canonical.path)) {
     return {
-      resolvedPath,
-      error: "Preview unavailable because the target path is outside the current workspace.",
+      resolvedPath: canonical.path,
+      exists: false,
+      error: isWithinWorkspace(workspacePath, lexicalPath)
+        ? "Preview unavailable because the target path resolves outside the current workspace."
+        : "Preview unavailable because the target path is outside the current workspace.",
     };
   }
 
-  if (!existsSync(resolvedPath)) {
-    const lexicalPath = resolvePreviewPath(workspacePath, rawPath);
-    if (!isWithinWorkspace(workspacePath, lexicalPath)) {
-      return {
-        resolvedPath,
-        error: "Preview unavailable because the target path is outside the current workspace.",
-      };
-    }
-    return { resolvedPath: lexicalPath };
-  }
-
-  try {
-    const targetPath = realpathSync(resolvedPath);
-    if (!options?.allowExternalDiffPreviews && !isWithinWorkspace(workspacePath, targetPath)) {
-      return {
-        resolvedPath,
-        error: "Preview unavailable because the target path resolves outside the current workspace.",
-      };
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      resolvedPath,
-      error: `Unable to resolve '${resolvedPath}': ${message}`,
-    };
-  }
-
-  return { resolvedPath };
+  return {
+    resolvedPath: canonical.path,
+    exists: existsSync(requestedPath),
+  };
 }
 
 export function readWorkspaceUtf8File(
@@ -145,29 +184,33 @@ export function readWorkspaceUtf8File(
   if (safePath.error) {
     return { exists: false, error: safePath.error };
   }
-
-  if (!existsSync(safePath.resolvedPath)) {
+  if (!safePath.exists) {
     return { exists: false };
   }
 
+  let descriptor: number | undefined;
   try {
-    const stats = statSync(safePath.resolvedPath);
+    // Open without following a trailing symlink so the file read is the one
+    // the containment check approved (neumie's TOCTOU fix).
+    const noFollow = process.platform === "win32" ? 0 : constants.O_NOFOLLOW;
+    descriptor = openSync(safePath.resolvedPath, constants.O_RDONLY | noFollow);
+    const stats = fstatSync(descriptor);
     if (!stats.isFile()) {
       return {
         exists: true,
-        error: `Preview unavailable because '${safePath.resolvedPath}' is not a regular file.`,
+        error: `Preview target '${safePath.resolvedPath}' is not a regular file.`,
       };
     }
     if (stats.size > MAX_PREVIEW_READ_BYTES) {
       return {
         exists: true,
-        error: `Preview unavailable because '${safePath.resolvedPath}' exceeds the ${MAX_PREVIEW_READ_BYTES} byte preview read limit.`,
+        error: `preview read limit exceeded for '${safePath.resolvedPath}' (${stats.size} bytes).`,
       };
     }
 
     return {
       exists: true,
-      content: readFileSync(safePath.resolvedPath, "utf8"),
+      content: readFileSync(descriptor, "utf8"),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -175,6 +218,8 @@ export function readWorkspaceUtf8File(
       exists: true,
       error: `Unable to read '${safePath.resolvedPath}': ${message}`,
     };
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
