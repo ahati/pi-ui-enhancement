@@ -131,10 +131,22 @@ function renderToolRawResult(
 	);
 }
 
-test("normalizeToolDisplayConfig defaults customToolOverrides to an empty opt-in map", () => {
+test("normalizeToolDisplayConfig ships the decorate-all wildcard by default", () => {
 	const config = normalizeToolDisplayConfig({}) as ToolDisplayConfigWithCustomOverrides;
 
-	assert.deepEqual(config.customToolOverrides, {});
+	assert.deepEqual(config.customToolOverrides, {
+		"*": { enabled: true, kind: "generic", outputMode: "summary" },
+	});
+});
+
+test("an explicit customToolOverrides object replaces the default wildcard", () => {
+	const empty = normalizeToolDisplayConfig({ customToolOverrides: {} }) as ToolDisplayConfigWithCustomOverrides;
+	assert.deepEqual(empty.customToolOverrides, {}, "explicit empty map opts out of decorate-all");
+
+	const off = normalizeToolDisplayConfig({
+		customToolOverrides: { "*": { enabled: false } },
+	}) as ToolDisplayConfigWithCustomOverrides;
+	assert.equal(off.customToolOverrides["*"]?.enabled, false);
 });
 
 test("normalizeToolDisplayConfig normalizes custom tool override shorthand, defaults, and invalid entries", () => {

@@ -50,11 +50,12 @@ import {
   extractPromptMetadata,
   getTextField,
   isMcpToolCandidate,
+  isMcpToolNameCandidate,
   MCP_PROXY_PROMPT_GUIDELINES,
   MCP_PROXY_PROMPT_SNIPPET,
   toRecord,
 } from "./tool-metadata.js";
-import { BUILT_IN_TOOL_OVERRIDE_NAMES } from "./types.js";
+import { BUILT_IN_TOOL_OVERRIDE_NAMES, CUSTOM_TOOL_OVERRIDE_WILDCARD } from "./types.js";
 import { toCustomToolOverrideKind, toCustomToolOutputMode, normalizeCustomToolOverrideEntry } from "./config-store.js";
 import type {
   BuiltInToolOverrideName,
@@ -1291,7 +1292,8 @@ function isBuiltInToolName(toolName: string): boolean {
   return (BUILT_IN_TOOL_OVERRIDE_NAMES as readonly string[]).includes(toolName);
 }
 
-function getRuntimeCustomToolOverride(
+/** The exact-name entry for a tool, if configured (no wildcard fallback). */
+function getExactCustomToolOverride(
   toolName: string,
   config: ToolDisplayConfig,
 ): CustomToolOverrideConfig | undefined {
@@ -1300,7 +1302,28 @@ function getRuntimeCustomToolOverride(
   }
 
   const overrides = toRecord((config as unknown as Record<string, unknown>).customToolOverrides);
-  return normalizeCustomToolOverrideEntry(overrides[toolName]);
+  const exact = overrides[toolName];
+  return exact === undefined ? undefined : normalizeCustomToolOverrideEntry(exact);
+}
+
+function getWildcardCustomToolOverride(
+  config: ToolDisplayConfig,
+): CustomToolOverrideConfig | undefined {
+  const overrides = toRecord((config as unknown as Record<string, unknown>).customToolOverrides);
+  const wildcard = overrides[CUSTOM_TOOL_OVERRIDE_WILDCARD];
+  return wildcard === undefined ? undefined : normalizeCustomToolOverrideEntry(wildcard);
+}
+
+/**
+ * Exact-name entries win; the "*" wildcard covers every other tool so all
+ * calls are decorated by default. An exact entry with enabled:false opts a
+ * tool back out.
+ */
+function getRuntimeCustomToolOverride(
+  toolName: string,
+  config: ToolDisplayConfig,
+): CustomToolOverrideConfig | undefined {
+  return getExactCustomToolOverride(toolName, config) ?? getWildcardCustomToolOverride(config);
 }
 
 function formatGenericToolCallLine(
@@ -2092,12 +2115,30 @@ export function registerToolDisplayOverrides(
       return undefined;
     }
 
-    const override = getRuntimeCustomToolOverride(toolName, getConfig());
-    if (!override?.enabled) {
+    const config = getConfig();
+    // An explicit per-tool entry always wins, including for MCP tools.
+    const exact = getExactCustomToolOverride(toolName, config);
+    if (exact?.enabled) {
+      return { toolName, override: exact };
+    }
+
+    // Built-ins, MCP tools, and codemode keep their specialized renderers;
+    // the wildcard must not divert them to the generic path.
+    if (
+      isBuiltInToolName(toolName) ||
+      toolName === "codemode" ||
+      isMcpToolCandidate(candidate) ||
+      isMcpToolNameCandidate(toolName)
+    ) {
       return undefined;
     }
 
-    return { toolName, override };
+    const wildcard = getWildcardCustomToolOverride(config);
+    if (!wildcard?.enabled) {
+      return undefined;
+    }
+
+    return { toolName, override: wildcard };
   };
 
   const decorateCustomToolOverrideCandidate = (candidate: unknown): boolean => {
@@ -2265,11 +2306,30 @@ export function registerToolDisplayOverrides(
     }
 
     registerToolRenderer.call(pi as PiWithToolRendererChain, (toolName, next) => {
+      const config = getConfig();
       const ours = capturedBuiltInRenderers.get(toolName as BuiltInToolOverrideName);
-      if (!ours || !getConfig().registerToolOverrides[toolName as BuiltInToolOverrideName]) {
+      if (ours && config.registerToolOverrides[toolName as BuiltInToolOverrideName]) {
+        return { ...next(), ...ours };
+      }
+
+      // MCP tools and codemode have their own resolvers (registered after this
+      // one) and must keep their specialized renderers.
+      if (toolName === "codemode" || isMcpToolNameCandidate(toolName)) {
         return next();
       }
-      return { ...next(), ...ours };
+
+      // Every other tool: decorate with the generic compact renderer unless an
+      // exact-name override opted it out (or the "*" wildcard is disabled).
+      const override = getRuntimeCustomToolOverride(toolName, config);
+      if (!override?.enabled) {
+        return next();
+      }
+      return {
+        ...next(),
+        renderCall: (args: unknown, theme: RenderTheme) => formatGenericToolCallLine(toolName, args, theme),
+        renderResult: (result: unknown, options: ToolRenderResultOptions, theme: RenderTheme) =>
+          renderCustomToolResult(result as ToolRenderInput, options, config, override.outputMode, theme),
+      };
     });
   };
   registerBuiltInToolRendererChain();

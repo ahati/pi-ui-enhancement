@@ -317,7 +317,16 @@ test("externally owned tools keep their execute and render through the Pi tool r
 	assert.equal(typeof resolvedRead.renderResult, "function");
 
 	assert.equal(resolver("edit", () => undefined)?.renderShell, "default");
-	assert.equal(resolver("remote", () => undefined), undefined, "unknown tools pass through");
+
+	// Unknown tools are decorated by default through the "*" wildcard so every
+	// call renders compactly; disabling the wildcard passes them through.
+	const decoratedRemote = resolver("remote", () => ({ renderCall: () => "base" })) as
+		{ renderCall?: (args: unknown, theme: unknown) => { render(w: number): string[] } } | undefined;
+	assert.ok(decoratedRemote?.renderCall, "unknown tools get the generic renderer");
+	const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+	const genericLine = decoratedRemote.renderCall({ a: 1 }, theme).render(120).join("\n");
+	assert.match(genericLine, /remote/, "generic renderer draws the tool name");
+	assert.doesNotMatch(genericLine, /^base$/, "generic renderer replaces the native call line");
 
 	const registeredWrite = registeredTools.find((tool) => tool.name === "write");
 	assert.ok(registeredWrite, "expected owned write to stay registered");

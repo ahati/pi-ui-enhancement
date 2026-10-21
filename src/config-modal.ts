@@ -14,7 +14,11 @@ import {
 } from "./presets.js";
 import { shortenPath } from "./render-utils.js";
 import type { InspectorSettingItem } from "./settings-inspector-modal.js";
-import { type ToolDisplayConfig } from "./types.js";
+import { CUSTOM_TOOL_OVERRIDE_WILDCARD, type ToolDisplayConfig } from "./types.js";
+
+function isDecorateAllToolsEnabled(config: ToolDisplayConfig): boolean {
+	return config.customToolOverrides[CUSTOM_TOOL_OVERRIDE_WILDCARD]?.enabled === true;
+}
 
 interface ToolDisplayConfigController {
 	getConfig(): ToolDisplayConfig;
@@ -285,6 +289,26 @@ function buildInspectorSettings(
 			searchTerms: ["codemode", "diff", "file", "changes", "script"],
 		},
 		{
+			id: "decorateAllTools",
+			label: "Decorate all tools",
+			currentValue: toOnOff(isDecorateAllToolsEnabled(config)),
+			values: ["on", "off"],
+			inspectorTitle: "Decorate All Tools",
+			inspectorSummary: [
+				"Renders every tool call compactly, including third-party extension tools, using the generic compact call line and a collapsed result summary.",
+				"Built-in tools (read, grep, find, ls, bash, edit, write), MCP tools, and codemode keep their specialized renderers either way.",
+			],
+			inspectorOptions: [
+				"on — unknown tools get a compact call line and summarized output",
+				"off — unknown tools keep their native extension rendering",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				'Stored as customToolOverrides["*"]; add a per-tool entry to override one tool, or set "enabled": false there to exclude it.',
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["decorate", "all", "tools", "generic", "wildcard", "third-party"],
+		},
+		{
 			id: "previewLines",
 			label: "Preview lines",
 			currentValue: String(config.previewLines),
@@ -527,6 +551,19 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 				...config,
 				codemodeShowFileDiffs: value === "on",
 			};
+		case "decorateAllTools":
+			return normalizeToolDisplayConfig({
+				...config,
+				customToolOverrides: {
+					...config.customToolOverrides,
+					[CUSTOM_TOOL_OVERRIDE_WILDCARD]: {
+						...config.customToolOverrides[CUSTOM_TOOL_OVERRIDE_WILDCARD],
+						enabled: value === "on",
+						kind: "generic",
+						outputMode: config.customToolOverrides[CUSTOM_TOOL_OVERRIDE_WILDCARD]?.outputMode ?? "summary",
+					},
+				},
+			});
 		case "previewLines":
 			return {
 				...config,

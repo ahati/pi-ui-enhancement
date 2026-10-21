@@ -295,8 +295,8 @@ Effective configuration is merged as defaults → global config → project conf
 | `enabled` | boolean | `true` | Global switch for all rendering and tool ownership; `/tool-display` stays available when off so it can be turned back on |
 | `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
 | `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
-| `customToolOverrides` | object | `{}` | Explicit opt-in rendering rules for non-built-in extension tools |
-| `enableNativeUserMessageBox` | boolean | `true` | Enable bordered user prompt rendering |
+| `customToolOverrides` | object | `{ "*": … }` | Rendering rules for non-built-in extension tools. The shipped `"*"` wildcard decorates every third-party tool (compact call line + summarized output); add an exact-name entry to override one tool, or `"*": { "enabled": false }` to turn decorate-all off |
+| `enableNativeUserMessageBox` | boolean | `false` | Bordered user prompt rendering (off by default; user prompts keep Pi's native look) |
 | `enableShikiCodeBlocks` | boolean | `true` | Use Shiki's TextMate grammar renderer for markdown code fences when the language is supported |
 | `formatCodeBlocks` | boolean | `true` | Render markdown code fences as compact bordered code panels instead of raw triple-backtick blocks |
 | `shikiCodeBlockTheme` | string | `"github-dark"` | Shiki theme for code fences: `github-dark`, `github-light`, `dark-plus`, `light-plus`, `min-dark`, `min-light`, `one-dark-pro`, `vitesse-dark`, or `vitesse-light` |
@@ -349,7 +349,13 @@ Set any entry to `false` if another extension should handle that tool instead.
 
 ### Custom tool overrides
 
-Use `customToolOverrides` when another extension registers a noisy top-level tool and you want `pi-ui-enhancement` to render that tool's call/result output. Custom overrides are explicit opt-in only: unlisted or disabled tools keep their original renderers.
+Every tool call is decorated by default. Built-in tools, MCP tools, and codemode use their specialized renderers; any other tool (third-party extension tools such as `apply_patch`, `todo`, or `web_search`) gets a compact call line and a summarized result through the shipped `"*"` wildcard.
+
+`customToolOverrides` tunes that behavior:
+
+- an **exact-name entry** overrides the wildcard for one tool (`kind`, `outputMode`, `preserveCallRenderer`);
+- `"*": { "enabled": false }` turns decorate-all off, so unknown tools keep their native renderers;
+- `"customToolOverrides": {}` does the same as a whole (an explicit object replaces the shipped default).
 
 ```json
 {

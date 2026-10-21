@@ -2,6 +2,8 @@ export const READ_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
 export const SEARCH_OUTPUT_MODES = ["hidden", "count", "preview"] as const;
 export const MCP_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
 export const CUSTOM_TOOL_OVERRIDE_KINDS = ["generic", "mcp"] as const;
+/** Wildcard key in customToolOverrides: decorates every tool without an exact-name entry. */
+export const CUSTOM_TOOL_OVERRIDE_WILDCARD = "*";
 export const CUSTOM_TOOL_OUTPUT_MODES = ["hidden", "summary", "preview"] as const;
 export const BASH_OUTPUT_MODES = ["opencode", "summary", "preview"] as const;
 export const BASH_INTENT_MODES = ["off", "render", "render-and-instruct"] as const;
@@ -139,8 +141,10 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 		edit: true,
 		write: true,
 	},
-	customToolOverrides: {},
-	enableNativeUserMessageBox: true,
+	customToolOverrides: {
+		[CUSTOM_TOOL_OVERRIDE_WILDCARD]: { enabled: true, kind: "generic", outputMode: "summary" },
+	},
+	enableNativeUserMessageBox: false,
 	enableShikiCodeBlocks: true,
 	formatCodeBlocks: true,
 	shikiCodeBlockTheme: "github-dark",

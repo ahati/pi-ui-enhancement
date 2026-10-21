@@ -417,7 +417,12 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 			source.registerToolOverrides,
 			source.registerReadToolOverride,
 		),
-		customToolOverrides: normalizeCustomToolOverrides(source.customToolOverrides),
+		// Absent key -> the shipped default (which decorates unknown tools via
+		// the "*" wildcard). An explicit object is honored verbatim, so
+		// `"customToolOverrides": {}` turns the wildcard off.
+		customToolOverrides: source.customToolOverrides === undefined
+			? cloneCustomToolOverrides(DEFAULT_TOOL_DISPLAY_CONFIG.customToolOverrides)
+			: normalizeCustomToolOverrides(source.customToolOverrides),
 		enableNativeUserMessageBox: toBoolean(
 			source.enableNativeUserMessageBox,
 			DEFAULT_TOOL_DISPLAY_CONFIG.enableNativeUserMessageBox,

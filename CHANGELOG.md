@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Every tool call is now decorated.** A shipped `customToolOverrides["*"]` wildcard renders any tool without an exact-name entry (third-party extension tools such as `apply_patch`, `todo`, `web_search`) with the compact generic call line and a summarized result. Exact-name entries still win, `"*": { "enabled": false }` or `"customToolOverrides": {}` opts out, and built-ins/MCP/codemode keep their specialized renderers. New **Decorate all tools** toggle in `/tool-display`.
+
+### Changed
+- User prompt decoration is now **off by default** (`enableNativeUserMessageBox: false`): user prompts keep Pi's native rendering unless you opt in.
+
+### Added
 - **Codemode file diffs** (ported from [hyein-cbio/pi-codemode-diff](https://github.com/hyein-cbio/pi-codemode-diff), now an integrated feature): `edit`/`write` changes made inside `codemode` script runs render as a budgeted, word-highlighted `File changes` section on the codemode result. Display-only (rendering metadata, never model-facing), survives session resume, annotates error/cancellation-after-write, and can be disabled with `codemodeShowFileDiffs`.
 - Renamed the package to **pi-ui-enhancement** (fork of MasuRii/pi-tool-display). Existing global and project configs under the legacy `pi-tool-display` extension directories are still read; saves use the new `pi-ui-enhancement` directories. The cross-package decoration API symbols (`pi-tool-display.api.v1`) are unchanged for compatibility.
 - Merged all open upstream PRs (#46, #48, #49, #50, #40, #34, #32, #31, #28, #27), jiwnchoi's Shiki code-block rendering, and MrDaGree's deferred ownership + Pi 1.1 renderer chain — see FORK-NOTES.md.

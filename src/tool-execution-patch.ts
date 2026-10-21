@@ -2,7 +2,7 @@ import {
   type ExtensionAPI,
   ToolExecutionComponent,
 } from "@earendil-works/pi-coding-agent";
-import { getTextField, isMcpToolCandidate, toRecord } from "./tool-metadata.js";
+import { getTextField, isMcpToolCandidate, isMcpToolNameCandidate, toRecord } from "./tool-metadata.js";
 import {
   type RenderTheme,
   formatMcpCallLine,
@@ -159,19 +159,6 @@ interface ToolRenderers {
   renderCall?: CallRenderer;
   renderResult?: ResultRenderer;
   renderShell?: unknown;
-}
-
-/**
- * Name-based MCP detection for the renderer-chain path, which sees only the
- * tool name (direct MCP tools are named mcp__server__tool on Pi 1.x).
- */
-function isMcpToolNameCandidate(toolName: string): boolean {
-  return toolName === "mcp" ||
-    /^mcp[_-]/i.test(toolName) ||
-    /_mcp$/i.test(toolName) ||
-    /^mcp__/i.test(toolName) ||
-    toolName.includes(":") ||
-    /^ctx_/i.test(toolName);
 }
 
 function installMcpRendererChain(pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): boolean {

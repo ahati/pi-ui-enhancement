@@ -94,6 +94,19 @@ function hasMcpSourceInfo(value: unknown): boolean {
 	return false;
 }
 
+/**
+ * Name-based MCP detection for render-time paths that only see a tool name
+ * (direct MCP tools are named mcp__server__tool on Pi 1.x).
+ */
+export function isMcpToolNameCandidate(toolName: string): boolean {
+	return toolName === "mcp" ||
+		/^mcp[_-]/i.test(toolName) ||
+		/_mcp$/i.test(toolName) ||
+		/^mcp__/i.test(toolName) ||
+		toolName.includes(":") ||
+		/^ctx_/i.test(toolName);
+}
+
 export function isMcpToolCandidate(tool: unknown): boolean {
 	if (!tool || typeof tool !== "object") {
 		return false;
