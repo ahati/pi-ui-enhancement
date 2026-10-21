@@ -37,6 +37,7 @@
   "diffSplitMinWidth": 120,
   "diffCollapsedLines": 24,
   "diffWordWrap": true,
+  "allowExternalDiffPreviews": false,
   "showTruncationHints": false,
   "showRtkCompactionHints": false
 }
