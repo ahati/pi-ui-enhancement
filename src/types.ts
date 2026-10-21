@@ -84,6 +84,11 @@ export interface ToolDisplayConfig {
 	diffSplitMinWidth: number;
 	diffCollapsedLines: number;
 	diffWordWrap: boolean;
+	/** Explicit diff row/emphasis backgrounds as #RRGGBB; undefined keeps theme-derived mixes. */
+	diffAddedBg?: string;
+	diffRemovedBg?: string;
+	diffAddedEmphasisBg?: string;
+	diffRemovedEmphasisBg?: string;
 	allowExternalDiffPreviews: boolean;
 	showTruncationHints: boolean;
 	showRtkCompactionHints: boolean;

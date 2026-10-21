@@ -73,6 +73,15 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
 
+function toHexColor(value: unknown, fallback: string | undefined): string | undefined {
+	if (typeof value !== "string") {
+		return fallback;
+	}
+
+	const trimmed = value.trim();
+	return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
+}
+
 function toReadOutputMode(value: unknown): ToolDisplayConfig["readOutputMode"] {
 	return READ_OUTPUT_MODES.includes(value as ToolDisplayConfig["readOutputMode"])
 		? (value as ToolDisplayConfig["readOutputMode"])
@@ -416,6 +425,10 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 		diffSplitMinWidth: clampNumber(source.diffSplitMinWidth, 70, 240, DEFAULT_TOOL_DISPLAY_CONFIG.diffSplitMinWidth),
 		diffCollapsedLines: clampNumber(source.diffCollapsedLines, 4, 240, DEFAULT_TOOL_DISPLAY_CONFIG.diffCollapsedLines),
 		diffWordWrap: toBoolean(source.diffWordWrap, DEFAULT_TOOL_DISPLAY_CONFIG.diffWordWrap),
+		diffAddedBg: toHexColor(source.diffAddedBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffAddedBg),
+		diffRemovedBg: toHexColor(source.diffRemovedBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffRemovedBg),
+		diffAddedEmphasisBg: toHexColor(source.diffAddedEmphasisBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffAddedEmphasisBg),
+		diffRemovedEmphasisBg: toHexColor(source.diffRemovedEmphasisBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffRemovedEmphasisBg),
 		allowExternalDiffPreviews: toBoolean(
 			source.allowExternalDiffPreviews,
 			DEFAULT_TOOL_DISPLAY_CONFIG.allowExternalDiffPreviews,
