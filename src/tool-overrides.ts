@@ -2293,7 +2293,10 @@ export function registerToolDisplayOverrides(
   pi.on("before_agent_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
     resolvePendingBuiltInToolOwnership();
+    // No retry timers here: before_agent_start fires on every user turn and the
+    // 25/75/150/300 ms timers would accumulate across the session. The
+    // registerTool interceptor catches late MCP registrations, and the direct
+    // call below is a lightweight sweep for anything missed (Gucvii's fix).
     registerMcpToolOverrides();
-    scheduleMcpToolOverrideDiscovery();
   });
 }
