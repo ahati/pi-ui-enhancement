@@ -61,3 +61,18 @@ conflict heavily with the merged architecture. Recorded here for follow-up:
   diff colors (removes previews), Dima-369's tool disabling (config already
   covers it), domye/rezkycodes/others' stale snapshots, branding-only forks
   (4cya, ooo-mmm), CI/lockfile/version churn.
+
+## Security & telemetry audit (2026-10)
+
+A full-repo audit (all 188 commits) found **no telemetry**: zero network
+paths, no analytics/beacon identifiers, no usage reporting; the only
+process execution was the (now removed) inherited postinstall hook.
+Hardening applied: config tmp-file writes use O_CREAT|O_EXCL|O_NOFOLLOW
+with 0600, debug logs are created 0600.
+
+Known, accepted items: codemode nested diffs persist in session details
+(bounded 64 KiB/diff · 256 KiB/batch · 2k lines; mirrors top-level edit
+result exposure); non-SGR escape sequences pass through in some render
+paths (pre-existing upstream behavior); thinking labels stamp SGR into
+persisted messages (fixed by the deferred nicobailon markdown-transformer
+rewrite).
