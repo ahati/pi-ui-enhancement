@@ -2,7 +2,7 @@
 
 # pi-ui-enhancement
 
-[![npm version](https://img.shields.io/npm/v/pi-ui-enhancement?style=for-the-badge)](https://www.npmjs.com/package/pi-ui-enhancement)
+[![install](https://img.shields.io/badge/install-git%3Agithub.com%2Fahati%2Fpi--ui--enhancement-blue?style=for-the-badge)](https://github.com/ahati/pi-ui-enhancement)
 [![GitHub](https://img.shields.io/badge/GitHub-ahati%2Fpi--ui--enhancement-181717?style=for-the-badge&logo=github)](https://github.com/ahati/pi-ui-enhancement)
 [![License](https://img.shields.io/github/license/ahati/pi-ui-enhancement?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
@@ -100,6 +100,18 @@ The original project is **MasuRii**'s `pi-tool-display`, and it remains the foun
 
 ## Installation
 
+### Git repository (recommended)
+
+```bash
+pi install git:github.com/ahati/pi-ui-enhancement
+```
+
+This clones the repository into `~/.pi/agent/git/github.com/ahati/pi-ui-enhancement` and installs its dependencies. Update it later with:
+
+```bash
+pi update git:github.com/ahati/pi-ui-enhancement
+```
+
 ### Local extension folder
 
 Place this folder in one of Pi's auto-discovery locations:
@@ -114,15 +126,13 @@ Place this folder in one of Pi's auto-discovery locations:
 
 ### npm package
 
+Not published to npm yet. Once it is, the same extension will be installable as:
+
 ```bash
 pi install npm:pi-ui-enhancement
 ```
 
-### Git repository
-
-```bash
-pi install git:github.com/ahati/pi-ui-enhancement
-```
+Until then, use the Git install above or the local extension folder.
 
 When upgrading from `pi-tool-display`, remove the old extension from the same location so both packages do not render the same tools. Your existing config is picked up from the legacy directory automatically.
 

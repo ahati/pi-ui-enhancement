@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+- Installation now leads with the verified Git source, `pi install git:github.com/ahati/pi-ui-enhancement`, including the `pi update` command. The npm package is marked as not yet published (the badge no longer points at a nonexistent registry entry).
+
 ### Added
 - **Every tool call is now decorated.** A shipped `customToolOverrides["*"]` wildcard renders any tool without an exact-name entry (third-party extension tools such as `apply_patch`, `todo`, `web_search`) with the compact generic call line and a summarized result. Exact-name entries still win, `"*": { "enabled": false }` or `"customToolOverrides": {}` opts out, and built-ins/MCP/codemode keep their specialized renderers. New **Decorate all tools** toggle in `/tool-display`.
 
