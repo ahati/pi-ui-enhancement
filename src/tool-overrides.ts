@@ -23,7 +23,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
-import { renderBashCall } from "./bash-display.js";
+import { renderBashCall, toStateCarrier } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
 import {
@@ -1027,8 +1027,23 @@ type ToolRenderInput = {
   details?: unknown;
 };
 
+const BASH_RESULT_STATE_KEY = "__piToolDisplayBashResult";
+
 function textResult(text: string): Text {
   return new Text(text, 0, 0);
+}
+
+/**
+ * Reuses the caller's Text component for a rendered string so the TUI's
+ * differential renderer keeps optimizing partial bash output updates. Falls
+ * back to a fresh component when no cache exists (e.g. first render).
+ */
+function reuseTextComponent(text: string, cachedComponent?: Text): Text {
+  if (cachedComponent) {
+    cachedComponent.setText(text);
+    return cachedComponent;
+  }
+  return textResult(text);
 }
 
 function partialResultText(theme: RenderTheme, label: string): Text {
@@ -1042,6 +1057,7 @@ function renderBashPreviewWithHints(
   theme: RenderTheme,
   options: ToolRenderResultOptions,
   details: BashToolDetails | undefined,
+  cachedComponent?: Text,
 ): Text {
   let preview = buildPreviewText(lines, maxLines, theme, options.expanded);
   if (config.showTruncationHints) {
@@ -1050,7 +1066,7 @@ function renderBashPreviewWithHints(
   if (options.expanded) {
     preview += formatExpandedPreviewCapHint(lines, config, theme);
   }
-  return textResult(preview);
+  return reuseTextComponent(preview, cachedComponent);
 }
 
 function prepareBashLivePreview(
@@ -1075,12 +1091,13 @@ function renderBashLivePreview(
   config: ToolDisplayConfig,
   theme: RenderTheme,
   details: BashToolDetails | undefined,
+  cachedComponent?: Text,
 ): Text {
   const prepared = prepareBashLivePreview(rawOutput, options, config);
   if (!prepared) {
-    return textResult("");
+    return reuseTextComponent("", cachedComponent);
   }
-  return renderBashPreviewWithHints(prepared.lines, prepared.maxLines, config, theme, options, details);
+  return renderBashPreviewWithHints(prepared.lines, prepared.maxLines, config, theme, options, details, cachedComponent);
 }
 
 function renderBashErrorResult(
@@ -1089,6 +1106,7 @@ function renderBashErrorResult(
   config: ToolDisplayConfig,
   theme: RenderTheme,
   details: BashToolDetails | undefined,
+  cachedComponent?: Text,
 ): Text {
   const lines = prepareOutputLines(rawOutput, options);
   let text = theme.fg("error", "↳ command failed");
@@ -1111,7 +1129,7 @@ function renderBashErrorResult(
     text += formatExpandedPreviewCapHint(lines, config, theme);
   }
 
-  return textResult(text);
+  return reuseTextComponent(text, cachedComponent);
 }
 
 function renderSearchResult(
@@ -1971,66 +1989,70 @@ export function registerToolDisplayOverrides(
       const details = result.details as BashToolDetails | undefined;
       const rawOutput = extractTextOutput(result);
 
+      // Reuse one Text component across partial updates so the TUI's
+      // differential renderer does not fall back to full redraws while bash
+      // output streams in (ported from PeachIceTea's fork).
+      const carrier = toStateCarrier(context?.state) as Record<string, unknown> | undefined;
+      const cachedComponent = carrier?.[BASH_RESULT_STATE_KEY] as Text | undefined;
+      let rendered: Text;
+
       if (options.isPartial) {
-        return renderBashLivePreview(rawOutput, options, config, theme, details);
-      }
+        rendered = renderBashLivePreview(rawOutput, options, config, theme, details, cachedComponent);
+      } else if (isToolError(result, context)) {
+        rendered = renderBashErrorResult(rawOutput, options, config, theme, details, cachedComponent);
+      } else {
+        const lines = prepareOutputLines(rawOutput, options);
 
-      if (isToolError(result, context)) {
-        return renderBashErrorResult(rawOutput, options, config, theme, details);
-      }
-
-      const lines = prepareOutputLines(rawOutput, options);
-
-      if (lines.length === 0) {
-        let text = formatBashNoOutputLine(getStringField(context?.args, "command"), theme);
-        if (config.showTruncationHints) {
-          text += formatBashTruncationHints(details, theme);
+        if (lines.length === 0) {
+          let text = formatBashNoOutputLine(getStringField(context?.args, "command"), theme);
+          if (config.showTruncationHints) {
+            text += formatBashTruncationHints(details, theme);
+          }
+          rendered = reuseTextComponent(text, cachedComponent);
+        } else if (config.bashOutputMode === "summary") {
+          if (options.expanded) {
+            const maxLines = getExpandedPreviewLineLimit(lines, config);
+            rendered = renderBashPreviewWithHints(lines, maxLines, config, theme, options, details, cachedComponent);
+          } else {
+            let summary = formatBashSummary(
+              lines,
+              details,
+              theme,
+              config.showTruncationHints,
+            );
+            summary += formatExpandHint(theme);
+            if (config.showTruncationHints) {
+              summary += formatBashTruncationHints(details, theme);
+            }
+            rendered = reuseTextComponent(summary, cachedComponent);
+          }
+        } else if (config.bashOutputMode === "preview") {
+          const maxLines = options.expanded
+            ? getExpandedPreviewLineLimit(lines, config)
+            : config.previewLines;
+          rendered = renderBashPreviewWithHints(lines, maxLines, config, theme, options, details, cachedComponent);
+        } else if (!options.expanded && config.bashCollapsedLines === 0) {
+          let hidden = theme.fg("muted", "↳ output hidden");
+          if (config.showTruncationHints) {
+            hidden += formatBashTruncationHints(details, theme);
+          }
+          rendered = reuseTextComponent(hidden, cachedComponent);
+        } else {
+          const maxLines = options.expanded
+            ? lines.length
+            : config.bashCollapsedLines;
+          let text = buildPreviewText(lines, maxLines, theme, options.expanded);
+          if (config.showTruncationHints) {
+            text += formatBashTruncationHints(details, theme);
+          }
+          rendered = reuseTextComponent(text, cachedComponent);
         }
-        return textResult(text);
       }
 
-      if (config.bashOutputMode === "summary") {
-        if (options.expanded) {
-          const maxLines = getExpandedPreviewLineLimit(lines, config);
-          return renderBashPreviewWithHints(lines, maxLines, config, theme, options, details);
-        }
-
-        let summary = formatBashSummary(
-          lines,
-          details,
-          theme,
-          config.showTruncationHints,
-        );
-        summary += formatExpandHint(theme);
-        if (config.showTruncationHints) {
-          summary += formatBashTruncationHints(details, theme);
-        }
-        return textResult(summary);
+      if (carrier) {
+        carrier[BASH_RESULT_STATE_KEY] = rendered;
       }
-
-      if (config.bashOutputMode === "preview") {
-        const maxLines = options.expanded
-          ? getExpandedPreviewLineLimit(lines, config)
-          : config.previewLines;
-        return renderBashPreviewWithHints(lines, maxLines, config, theme, options, details);
-      }
-
-      if (!options.expanded && config.bashCollapsedLines === 0) {
-        let hidden = theme.fg("muted", "↳ output hidden");
-        if (config.showTruncationHints) {
-          hidden += formatBashTruncationHints(details, theme);
-        }
-        return textResult(hidden);
-      }
-
-      const maxLines = options.expanded
-        ? lines.length
-        : config.bashCollapsedLines;
-      let text = buildPreviewText(lines, maxLines, theme, options.expanded);
-      if (config.showTruncationHints) {
-        text += formatBashTruncationHints(details, theme);
-      }
-      return textResult(text);
+      return rendered;
     },
     });
   });

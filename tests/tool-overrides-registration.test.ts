@@ -545,3 +545,32 @@ test("registerToolDisplayOverrides drains pending display decorations from early
 		}
 	}
 });
+
+test("bash renderResult reuses one Text component across partial updates", async () => {
+	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
+	await eventHandlers.before_agent_start?.();
+
+	const bashTool = registeredTools.find((tool) => tool.name === "bash");
+	assert.ok(bashTool, "bash override registered");
+	assert.equal(typeof bashTool.renderResult, "function", "bash has renderResult");
+
+	const state: Record<string, unknown> = {};
+	const context = { state, args: { command: "echo hi" } };
+
+	const first = bashTool.renderResult!(
+		{ content: [{ type: "text", text: "partial" }] } as never,
+		{ isPartial: true, expanded: false } as never,
+		{ fg: (_c: string, t: string) => t, bold: (t: string) => t } as never,
+		context as never,
+	);
+	const second = bashTool.renderResult!(
+		{ content: [{ type: "text", text: "partial\nmore output" }] } as never,
+		{ isPartial: true, expanded: false } as never,
+		{ fg: (_c: string, t: string) => t, bold: (t: string) => t } as never,
+		context as never,
+	);
+
+	assert.ok(first instanceof Object, "partial render returns a component");
+	assert.equal(second, first, "the same Text instance is reused via context.state");
+});

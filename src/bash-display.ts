@@ -76,6 +76,8 @@ function toStateCarrier(value: unknown): BashSpinnerStateCarrier | undefined {
 	return value as BashSpinnerStateCarrier;
 }
 
+export { toStateCarrier };
+
 function getSyntheticToolCallId(carrier: BashSpinnerStateCarrier | undefined): string | undefined {
 	if (!carrier) {
 		return undefined;
