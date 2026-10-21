@@ -1,7 +1,7 @@
 {
-  "name": "pi-tool-display",
+  "name": "pi-ui-enhancement",
   "version": "0.5.0",
-  "description": "Compact tool call rendering, diff visualization, and output truncation extension for Pi coding agent. Hides, collapses, and truncates verbose tool output for cleaner TUI display.",
+  "description": "Compact tool call rendering, diff visualization, Shiki code blocks, codemode diffs, and output truncation for the Pi coding agent. Successor to pi-tool-display.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
@@ -48,16 +48,16 @@
     "diff",
     "output-mode"
   ],
-  "author": "jiwnchoi",
+  "author": "MasuRii, contributors (fork: ahati)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jiwnchoi/pi-render.git"
+    "url": "git+https://github.com/ahati/pi-ui-enhancement.git"
   },
   "bugs": {
-    "url": "https://github.com/jiwnchoi/pi-render/issues"
+    "url": "https://github.com/ahati/pi-ui-enhancement/issues"
   },
-  "homepage": "https://github.com/jiwnchoi/pi-render#readme",
+  "homepage": "https://github.com/ahati/pi-ui-enhancement#readme",
   "engines": {
     "node": ">=20"
   },

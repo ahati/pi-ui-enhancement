@@ -1,12 +1,13 @@
 <div align="center">
 
-# pi-tool-display
+# pi-ui-enhancement
 
-[![npm version](https://img.shields.io/npm/v/pi-tool-display?style=for-the-badge)](https://www.npmjs.com/package/pi-tool-display)
-[![License](https://img.shields.io/github/license/MasuRii/pi-tool-display?style=for-the-badge)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/pi-ui-enhancement?style=for-the-badge)](https://www.npmjs.com/package/pi-ui-enhancement)
+[![License](https://img.shields.io/github/license/ahati/pi-ui-enhancement?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y01PSSVR)
+Fork of [MasuRii/pi-tool-display](https://github.com/MasuRii/pi-tool-display)
+with all open upstream PRs, selected fork improvements, and new features.
 
 OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mariozechner/pi).
 
@@ -114,9 +115,9 @@ import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-render/too
 
 `decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-render` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools.
 
-On Pi 1.1 and later, `pi-tool-display` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
+On Pi 1.1 and later, `pi-ui-enhancement` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
 
-Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown during load. `pi-tool-display` therefore defers built-in tool registration to the `session_start` event and registers only the tools no other extension owns. This avoids the `Tool "read" conflicts with ...` startup diagnostic and keeps the other extension's execute logic in charge.
+Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown during load. `pi-ui-enhancement` therefore defers built-in tool registration to the `session_start` event and registers only the tools no other extension owns. This avoids the `Tool "read" conflicts with ...` startup diagnostic and keeps the other extension's execute logic in charge.
 
 ## Presets
 
@@ -222,9 +223,9 @@ Output expansion is unchanged: `Ctrl+O` reveals the whole output in every `bashO
 Runtime configuration is stored at:
 
 ```text
-Global default: ~/.pi/agent/extensions/pi-tool-display/config.json
-Global with PI_CODING_AGENT_DIR: $PI_CODING_AGENT_DIR/extensions/pi-tool-display/config.json
-Project override: .pi/extensions/pi-tool-display/config.json
+Global default: ~/.pi/agent/extensions/pi-ui-enhancement/config.json
+Global with PI_CODING_AGENT_DIR: $PI_CODING_AGENT_DIR/extensions/pi-ui-enhancement/config.json
+Project override: .pi/extensions/pi-ui-enhancement/config.json (legacy pi-tool-display path still read)
 ```
 
 Effective configuration is merged as defaults → global config → project config. Project-level config requires Pi 0.79.1 or newer so the extension can verify project trust status; when trust is unavailable or the project is not trusted, project config is ignored with a warning. Project saves store only values that differ from the global config so inherited global settings keep applying. A starter template is included at `config/config.example.json`.
@@ -458,15 +459,15 @@ If you still prefer an explicit config, set:
 
 On Pi 1.1+, built-in tools owned by another extension are instead rendered
 compactly through the Pi tool renderer chain (`registerToolRenderer`): the owner
-keeps its execute logic and pi-tool-display still applies its display renderers,
+keeps its execute logic and pi-ui-enhancement still applies its display renderers,
 in any load order. On older Pi versions the skip behavior above applies.
 
 ### Config not loading
 
 If your settings are not being applied:
 
-1. Check the global Pi tool-display config (default: `~/.pi/agent/extensions/pi-tool-display/config.json`, respects `PI_CODING_AGENT_DIR`)
-2. Check the optional project override at `.pi/extensions/pi-tool-display/config.json`
+1. Check the global Pi tool-display config (default: `~/.pi/agent/extensions/pi-ui-enhancement/config.json`, respects `PI_CODING_AGENT_DIR`)
+2. Check the optional project override at `.pi/extensions/pi-ui-enhancement/config.json` (legacy `pi-tool-display` paths are still read)
 3. Make sure the JSON is valid
 4. Make sure you are running Pi 0.79.1 or newer and the project is trusted when expecting project overrides to apply
 5. Run `/tool-display show` to inspect the effective config summary

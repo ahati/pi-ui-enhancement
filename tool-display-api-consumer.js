@@ -1,5 +1,5 @@
 // These symbols are the stable, cross-package API boundary. Keep this small
-// consumer module dependency-free so extensions can load before pi-tool-display.
+// consumer module dependency-free so extensions can load before pi-ui-enhancement.
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
 const PENDING_DECORATIONS_LIMIT = 100;

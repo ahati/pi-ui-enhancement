@@ -382,7 +382,7 @@ function buildInspectorSettings(
 				"on — allow diff previews for target paths anywhere on disk",
 			],
 			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
-				"This setting only affects presentation previews rendered by pi-tool-display.",
+				"This setting only affects presentation previews rendered by pi-ui-enhancement.",
 			]),
 			inspectorPath: configPath,
 			searchTerms: ["diff", "external", "preview", "workspace", "path", "outside"],

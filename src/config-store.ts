@@ -29,11 +29,29 @@ const PROJECT_CONFIG_DIR_NAME = typeof piCodingAgentExports.CONFIG_DIR_NAME === 
 	? piCodingAgentExports.CONFIG_DIR_NAME
 	: ".pi";
 function getGlobalToolDisplayConfigDir(): string {
+	return join(resolvePiAgentDir(), "extensions", "pi-ui-enhancement");
+}
+
+function getLegacyGlobalToolDisplayConfigDir(): string {
 	return join(resolvePiAgentDir(), "extensions", "pi-tool-display");
 }
 
 export function getGlobalToolDisplayConfigPath(): string {
 	return join(getGlobalToolDisplayConfigDir(), "config.json");
+}
+
+/**
+ * Config resolution keeps the legacy pi-tool-display locations readable so an
+ * upgrade to pi-ui-enhancement preserves existing user configuration. The new
+ * location wins when both exist; saves always target the new location.
+ */
+export function getReadableGlobalToolDisplayConfigPath(): string {
+	const next = getGlobalToolDisplayConfigPath();
+	if (existsSync(next)) {
+		return next;
+	}
+	const legacy = join(getLegacyGlobalToolDisplayConfigDir(), "config.json");
+	return existsSync(legacy) ? legacy : next;
 }
 
 export type ToolDisplayConfigScope = "global" | "project";
@@ -445,14 +463,31 @@ export function getProjectToolDisplayConfigPath(
 	cwd: string,
 	configDirName = PROJECT_CONFIG_DIR_NAME,
 ): string {
+	return join(cwd, configDirName, "extensions", "pi-ui-enhancement", "config.json");
+}
+
+function getLegacyProjectToolDisplayConfigPath(
+	cwd: string,
+	configDirName = PROJECT_CONFIG_DIR_NAME,
+): string {
 	return join(cwd, configDirName, "extensions", "pi-tool-display", "config.json");
+}
+
+/** Prefers the pi-ui-enhancement project config, falling back to the legacy pi-tool-display path. */
+function getReadableProjectToolDisplayConfigPath(cwd: string): string | undefined {
+	const next = getProjectToolDisplayConfigPath(cwd);
+	if (existsSync(next)) {
+		return next;
+	}
+	const legacy = getLegacyProjectToolDisplayConfigPath(cwd);
+	return existsSync(legacy) ? legacy : next;
 }
 
 export function loadEffectiveToolDisplayConfig(
 	options: EffectiveToolDisplayConfigLoadOptions = {},
 ): EffectiveToolDisplayConfigLoadResult {
-	const globalConfigFile = options.globalConfigFile ?? getGlobalToolDisplayConfigPath();
-	const projectConfigFile = options.projectConfigFile ?? (options.cwd ? getProjectToolDisplayConfigPath(options.cwd) : undefined);
+	const globalConfigFile = options.globalConfigFile ?? getReadableGlobalToolDisplayConfigPath();
+	const projectConfigFile = options.projectConfigFile ?? (options.cwd ? getReadableProjectToolDisplayConfigPath(options.cwd) : undefined);
 	const warnings: string[] = [];
 	const rawSources: unknown[] = [];
 
