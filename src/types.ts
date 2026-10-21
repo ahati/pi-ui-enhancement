@@ -54,6 +54,7 @@ export interface ToolDisplayConfig {
 	readOutputMode: ReadOutputMode;
 	searchOutputMode: SearchOutputMode;
 	mcpOutputMode: McpOutputMode;
+	codemodeOutputMode: "summary" | "calls" | "preview";
 	previewLines: number;
 	expandedPreviewMaxLines: number;
 	bashOutputMode: BashOutputMode;
@@ -87,6 +88,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	readOutputMode: "hidden",
 	searchOutputMode: "hidden",
 	mcpOutputMode: "hidden",
+	codemodeOutputMode: "calls",
 	previewLines: 8,
 	expandedPreviewMaxLines: 4000,
 	bashOutputMode: "opencode",
