@@ -177,13 +177,17 @@ test("registerToolDisplayOverrides copies built-in prompt metadata onto overridd
 		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
 	}
 
-	assert.deepEqual(byName.get("read")?.promptGuidelines, (builtInTools.read as unknown as RegisteredToolLike).promptGuidelines);
-	assert.deepEqual(byName.get("edit")?.promptGuidelines, (builtInTools.edit as unknown as RegisteredToolLike).promptGuidelines);
-	assert.deepEqual(byName.get("write")?.promptGuidelines, (builtInTools.write as unknown as RegisteredToolLike).promptGuidelines);
-	assert.equal(byName.get("grep")?.promptGuidelines, undefined);
-	assert.equal(byName.get("find")?.promptGuidelines, undefined);
-	assert.equal(byName.get("ls")?.promptGuidelines, undefined);
-	assert.equal(byName.get("bash")?.promptGuidelines, undefined);
+	// Prompt metadata is copied verbatim from the built-ins, whatever the
+	// installed Pi version ships (1.3's bash carries a PI_* env guideline,
+	// older versions had none).
+	for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
+		const builtInMetadata = builtInTools[name] as unknown as RegisteredToolLike;
+		assert.deepEqual(
+			byName.get(name)?.promptGuidelines,
+			builtInMetadata.promptGuidelines,
+			`${name} promptGuidelines match the built-in tool`,
+		);
+	}
 });
 
 test("registerToolDisplayOverrides defers built-in display renderers until session lifecycle", async () => {

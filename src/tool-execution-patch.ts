@@ -148,10 +148,67 @@ function restoreToolExecutionMcpRender(): void {
   delete proto.__piToolDisplayMcpPatchOwner;
 }
 
+/** Pi >= 1.0.1 exposes the official render-time renderer chain. */
+type ToolRendererChainHost = ExtensionAPI & {
+  registerToolRenderer?: (
+    resolver: (toolName: string, next: () => ToolRenderers | undefined) => ToolRenderers | undefined,
+  ) => void;
+};
+
+interface ToolRenderers {
+  renderCall?: CallRenderer;
+  renderResult?: ResultRenderer;
+  renderShell?: unknown;
+}
+
+/**
+ * Name-based MCP detection for the renderer-chain path, which sees only the
+ * tool name (direct MCP tools are named mcp__server__tool on Pi 1.x).
+ */
+function isMcpToolNameCandidate(toolName: string): boolean {
+  return toolName === "mcp" ||
+    /^mcp[_-]/i.test(toolName) ||
+    /_mcp$/i.test(toolName) ||
+    /^mcp__/i.test(toolName) ||
+    toolName.includes(":") ||
+    /^ctx_/i.test(toolName);
+}
+
+function installMcpRendererChain(pi: ExtensionAPI, getConfig: () => ToolDisplayConfig): boolean {
+  const host = pi as ToolRendererChainHost;
+  if (typeof host.registerToolRenderer !== "function") {
+    return false;
+  }
+
+  host.registerToolRenderer((toolName, next) => {
+    const base = next();
+    if (!isMcpToolNameCandidate(toolName)) {
+      return base;
+    }
+    const toolLabel = toolName === "mcp" ? "MCP Proxy" : `MCP ${toolName}`;
+    return {
+      ...base,
+      renderCall(args, theme) {
+        return formatMcpCallLine(toolName, toolLabel, toRecord(args), theme);
+      },
+      renderResult(result, options, theme) {
+        return renderMcpResult(result as never, options, getConfig(), theme);
+      },
+    };
+  });
+  return true;
+}
+
 export default function registerToolExecutionMcpPatch(
   pi: ExtensionAPI,
   getConfig: () => ToolDisplayConfig,
 ): void {
+  // Prefer the official renderer chain (Pi >= 1.0.1); the prototype patch
+  // below is the fallback for Pi 0.8x, whose renderer resolution was internal.
+  if (installMcpRendererChain(pi, getConfig)) {
+    return;
+  }
+
   patchToolExecutionMcpRender(getConfig);
 
   onReloadShutdown(pi, () => {

@@ -76,17 +76,98 @@ function renderOutputPreview(
   };
 }
 
+function renderCodemodeResult(
+  original: NonNullable<ResultRenderer>,
+  result: Parameters<ResultRenderer>[0],
+  options: Parameters<ResultRenderer>[1],
+  theme: Parameters<ResultRenderer>[2],
+  context: Parameters<ResultRenderer>[3],
+  getConfig: () => Pick<ToolDisplayConfig, "codemodeOutputMode" | "previewLines" | "codemodeShowFileDiffs">,
+  capture?: Capture,
+): Component {
+  // Our collapsed Container cannot be reused as the native renderer's Text component.
+  const nativeContext = { ...context, lastComponent: undefined };
+  if (options.expanded) return original(result, options, theme, nativeContext);
+  const expanded = false;
+  const counts = { running: 0, ok: 0, error: 0, cancelled: 0 };
+  const details: unknown = result.details;
+  if (details !== undefined) {
+    if (!isRecord(details) || !Array.isArray(details.calls)) {
+      throw new Error("Invalid codemode call details");
+    }
+    for (const call of details.calls) {
+      const status: unknown = isRecord(call) ? call.status : undefined;
+      switch (status) {
+        case "running":
+        case "ok":
+        case "error":
+        case "cancelled":
+          counts[status]++;
+          break;
+        default:
+          throw new Error("Invalid codemode call status");
+      }
+    }
+  }
+  const summary = renderSummary(counts, options, theme, context.isError);
+  const config = getConfig();
+
+  // File-change diffs captured inside the codemode run (pi-codemode-diff
+  // feature): live from the capture during the run, persisted in details
+  // for resumed sessions.
+  const toolCallId = typeof context.toolCallId === "string" ? context.toolCallId : "";
+  if (typeof context.invalidate === "function" && toolCallId) {
+    capture?.watch(toolCallId, context.invalidate);
+  }
+  const changes = config.codemodeShowFileDiffs
+    ? readChanges(result.details) ?? (toolCallId ? capture?.changes(toolCallId) : undefined)
+    : undefined;
+
+  if (config.codemodeOutputMode === "summary") {
+    if (!changes?.length) return summary;
+    const summaryWithDiffs = new Container();
+    summaryWithDiffs.addChild(summary);
+    summaryWithDiffs.addChild(diffSection(changes, expanded, theme));
+    return summaryWithDiffs;
+  }
+  const container = new Container();
+  container.addChild(summary);
+  container.addChild(original({ ...result, content: [] }, options, theme, nativeContext));
+  if (changes?.length) {
+    container.addChild(diffSection(changes, expanded, theme));
+  }
+  if (config.codemodeOutputMode === "preview" && !options.isPartial) {
+    container.addChild(renderOutputPreview(result, config.previewLines, theme, context.isError));
+  }
+  return container;
+}
+
+type CodemodeRenderConfig = Pick<ToolDisplayConfig, "codemodeOutputMode" | "previewLines" | "codemodeShowFileDiffs">;
+
+/** Pi >= 1.0.1 exposes the official render-time renderer chain. */
+interface ToolRendererChainHost {
+  registerToolRenderer?: (
+    resolver: (toolName: string, next: () => ToolRenderers | undefined) => ToolRenderers | undefined,
+  ) => void;
+}
+
+interface ToolRenderers {
+  renderCall?: CallRenderer;
+  renderResult?: ResultRenderer;
+}
+
+function wrapCodemodeCallRenderer(original: NonNullable<CallRenderer>): CallRenderer {
+  return (args, theme, context) => {
+    if (context?.expanded) return original(args, theme, context);
+    return new Text(theme.fg("toolTitle", theme.bold("codemode")), 0, 0);
+  };
+}
+
 export function registerCodemodeDisplay(
   pi: CodemodeDisplayHost,
   getConfig: () => Pick<ToolDisplayConfig, "codemodeOutputMode" | "previewLines" | "codemodeShowFileDiffs">,
   capture?: Capture,
 ): void {
-  // ponytail: uses private TUI lookups until Pi exposes renderer-only registration.
-  const rawPrototype: unknown = ToolExecutionComponent.prototype;
-  // SAFETY: Pi's ToolExecutionComponent implements these private getters and stores toolName on each instance.
-  const prototype = rawPrototype as ToolRendererLookup;
-  const originalCall = prototype.getCallRenderer;
-  const originalResult = prototype.getResultRenderer;
   let nativeCodemode = false;
 
   pi.on("session_start", () => {
@@ -95,75 +176,44 @@ export function registerCodemodeDisplay(
     );
   });
 
+  // Preferred path on Pi >= 1.0.1: the official renderer chain.
+  const chainHost = pi as unknown as ToolRendererChainHost;
+  if (typeof chainHost.registerToolRenderer === "function") {
+    chainHost.registerToolRenderer((toolName, next) => {
+      const base = next();
+      if (!nativeCodemode || toolName !== "codemode" || !base?.renderResult) return base;
+      const renderBase = base.renderResult;
+      return {
+        ...base,
+        ...(base.renderCall ? { renderCall: wrapCodemodeCallRenderer(base.renderCall) } : {}),
+        renderResult(result, options, theme, context) {
+          return renderCodemodeResult(
+            renderBase, result, options, theme, context, getConfig, capture,
+          );
+        },
+      };
+    });
+    return;
+  }
+
+  // Fallback for Pi 0.8x: prototype patch using private TUI lookups.
+  const rawPrototype: unknown = ToolExecutionComponent.prototype;
+  // SAFETY: Pi's ToolExecutionComponent implements these private getters and stores toolName on each instance.
+  const prototype = rawPrototype as ToolRendererLookup;
+  const originalCall = prototype.getCallRenderer;
+  const originalResult = prototype.getResultRenderer;
+
   const getCallRenderer: ToolRendererLookup["getCallRenderer"] = function (this: ToolRendererLookup) {
     const original = originalCall.call(this);
     if (!nativeCodemode || this.toolName !== "codemode" || !original) return original;
-    return (args, theme, context) => {
-      if (context.expanded) return original(args, theme, context);
-      return new Text(theme.fg("toolTitle", theme.bold("codemode")), 0, 0);
-    };
+    return wrapCodemodeCallRenderer(original);
   };
 
   const getResultRenderer: ToolRendererLookup["getResultRenderer"] = function (this: ToolRendererLookup) {
     const original = originalResult.call(this);
     if (!nativeCodemode || this.toolName !== "codemode" || !original) return original;
-    return (result, options, theme, context) => {
-      // Our collapsed Container cannot be reused as the native renderer's Text component.
-      const nativeContext = { ...context, lastComponent: undefined };
-      if (options.expanded) return original(result, options, theme, nativeContext);
-      const expanded = false;
-      const counts = { running: 0, ok: 0, error: 0, cancelled: 0 };
-      const details: unknown = result.details;
-      if (details !== undefined) {
-        if (!isRecord(details) || !Array.isArray(details.calls)) {
-          throw new Error("Invalid codemode call details");
-        }
-        for (const call of details.calls) {
-          const status: unknown = isRecord(call) ? call.status : undefined;
-          switch (status) {
-            case "running":
-            case "ok":
-            case "error":
-            case "cancelled":
-              counts[status]++;
-              break;
-            default:
-              throw new Error("Invalid codemode call status");
-          }
-        }
-      }
-      const summary = renderSummary(counts, options, theme, context.isError);
-      const config = getConfig();
-
-      // File-change diffs captured inside the codemode run (pi-codemode-diff
-      // feature): live from the capture during the run, persisted in details
-      // for resumed sessions.
-      const toolCallId = typeof context.toolCallId === "string" ? context.toolCallId : "";
-      if (typeof context.invalidate === "function" && toolCallId) {
-        capture?.watch(toolCallId, context.invalidate);
-      }
-      const changes = config.codemodeShowFileDiffs
-        ? readChanges(result.details) ?? (toolCallId ? capture?.changes(toolCallId) : undefined)
-        : undefined;
-
-      if (config.codemodeOutputMode === "summary") {
-        if (!changes?.length) return summary;
-        const summaryWithDiffs = new Container();
-        summaryWithDiffs.addChild(summary);
-        summaryWithDiffs.addChild(diffSection(changes, expanded, theme));
-        return summaryWithDiffs;
-      }
-      const container = new Container();
-      container.addChild(summary);
-      container.addChild(original({ ...result, content: [] }, options, theme, nativeContext));
-      if (changes?.length) {
-        container.addChild(diffSection(changes, expanded, theme));
-      }
-      if (config.codemodeOutputMode === "preview" && !options.isPartial) {
-        container.addChild(renderOutputPreview(result, config.previewLines, theme, context.isError));
-      }
-      return container;
-    };
+    return (result, options, theme, context) =>
+      renderCodemodeResult(original, result, options, theme, context, getConfig, capture);
   };
 
   prototype.getCallRenderer = getCallRenderer;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initTheme, ToolExecutionComponent, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Text, type TUI } from "@earendil-works/pi-tui";
+import { Text, type Component, type TUI } from "@earendil-works/pi-tui";
 import { registerCodemodeDisplay } from "../src/codemode-display.ts";
 import { disposeAll, resetDisposed } from "../src/disposable.ts";
 import { normalizeToolDisplayConfig } from "../src/config-store.ts";
@@ -214,4 +214,90 @@ test("persisted diff details render for resumed sessions", async () => {
   } finally {
     cleanup();
   }
+});
+
+// ─── Official renderer chain path (Pi >= 1.0.1) ─────────────────────────────
+
+test("renderer chain path wraps codemode call and result renderers", async () => {
+  type ChainResolver = (toolName: string, next: () => unknown) => unknown;
+  const resolvers: ChainResolver[] = [];
+  const handlers = new Map<string, () => void>();
+  resetDisposed();
+  registerCodemodeDisplay({
+    getAllTools: () => [{ name: "codemode", sourceInfo: { path: "builtin:codemode" } }],
+    on(event: string, handler: () => void) { handlers.set(event, handler); },
+    registerToolRenderer(resolver: ChainResolver) { resolvers.push(resolver); },
+  } as never, () => normalizeToolDisplayConfig({}));
+  handlers.get("session_start")!();
+  assert.equal(resolvers.length, 1, "one resolver registered on the chain");
+  const resolver = resolvers[0];
+
+  // Non-codemode tools pass through untouched.
+  const passthrough = { renderCall: renderers.renderCall, renderResult: renderers.renderResult };
+  assert.equal(resolver("bash", () => passthrough), passthrough);
+
+  // Codemode renderers are wrapped: collapsed call is just the title.
+  const wrapped = resolver("codemode", () => passthrough) as {
+    renderCall: (args: unknown, theme: unknown, context: { expanded: boolean }) => Component;
+    renderResult: (result: unknown, options: { expanded: boolean; isPartial: boolean }, theme: unknown, context: unknown) => Component;
+  };
+  const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+  const collapsedCall = wrapped.renderCall({ code: script }, theme, { expanded: false });
+  assert.ok(collapsedCall.render(80).join("\n").includes("codemode"), "collapsed call shows the compact title");
+
+  const resultData = result(["ok", "ok"]);
+  const collapsedResult = wrapped.renderResult(resultData, { expanded: false, isPartial: false }, theme, {
+    toolCallId: "call-1",
+    invalidate: () => {},
+  });
+  const text = collapsedResult.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(text, /2 calls/);
+  assert.match(text, /NATIVE CALL TRACE/);
+  assert.doesNotMatch(text, /example\.ts|RESULT_ONE/);
+
+  disposeAll();
+});
+
+test("renderer chain path leaves codemode alone when the host has no codemode renderer", async () => {
+  type ChainResolver = (toolName: string, next: () => unknown) => unknown;
+  const resolvers: ChainResolver[] = [];
+  const handlers = new Map<string, () => void>();
+  resetDisposed();
+  registerCodemodeDisplay({
+    getAllTools: () => [{ name: "codemode", sourceInfo: { path: "builtin:codemode" } }],
+    on(event: string, handler: () => void) { handlers.set(event, handler); },
+    registerToolRenderer(resolver: ChainResolver) { resolvers.push(resolver); },
+  } as never, () => normalizeToolDisplayConfig({}));
+  handlers.get("session_start")!();
+
+  assert.equal(resolvers[0]("codemode", () => undefined), undefined);
+  disposeAll();
+});
+
+test("renderer chain path appends captured file diffs", async () => {
+  type ChainResolver = (toolName: string, next: () => unknown) => unknown;
+  const { Capture } = await import("../src/codemode-diff/capture.ts");
+  const capture = new Capture();
+  capture.start("call-1", "codemode");
+  capture.start("e1", "edit", "call-1");
+  capture.add({ toolCallId: "e1", tool: "edit", path: "src/chain.ts", kind: "edit", diff: "+ 1 chain" });
+
+  const resolvers: ChainResolver[] = [];
+  const handlers = new Map<string, () => void>();
+  resetDisposed();
+  registerCodemodeDisplay({
+    getAllTools: () => [{ name: "codemode", sourceInfo: { path: "builtin:codemode" } }],
+    on(event: string, handler: () => void) { handlers.set(event, handler); },
+    registerToolRenderer(resolver: ChainResolver) { resolvers.push(resolver); },
+  } as never, () => normalizeToolDisplayConfig({}), capture);
+  handlers.get("session_start")!();
+
+  const wrapped = resolvers[0]("codemode", () => ({ renderCall: renderers.renderCall, renderResult: renderers.renderResult })) as {
+    renderResult: (result: unknown, options: { expanded: boolean; isPartial: boolean }, theme: unknown, context: unknown) => Component;
+  };
+  const component = wrapped.renderResult(result(["ok"]), { expanded: false, isPartial: false }, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, { toolCallId: "call-1" });
+  const text = component.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(text, /File changes \(1\)/);
+  assert.match(text, /src\/chain\.ts/);
+  disposeAll();
 });

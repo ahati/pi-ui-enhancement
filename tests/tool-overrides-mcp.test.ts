@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import registerToolExecutionMcpPatch from "../src/tool-execution-patch.ts";
 import { isMcpToolCandidate } from "../src/tool-metadata.ts";
 import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
@@ -495,4 +497,41 @@ test("registerMcpToolOverrides handles getAllTools throwing gracefully", async (
 	// Should not throw during lifecycle
 	await runLifecycle(eventHandlers);
 	assert.ok(true, "should not throw when getAllTools fails");
+});
+
+// ─── Official renderer chain path (Pi >= 1.0.1) ─────────────────────────────
+
+test("MCP renderer chain path renders direct mcp__ tools through config modes", () => {
+	type ChainResolver = (toolName: string, next: () => unknown) => unknown;
+	const resolvers: ChainResolver[] = [];
+	const handlers = new Map<string, () => void>();
+	const pi = {
+		registerToolRenderer(resolver: ChainResolver) { resolvers.push(resolver); },
+		on(event: string, handler: () => void) { handlers.set(event, handler); },
+	} as never;
+	registerToolExecutionMcpPatch(pi, () => ({ ...DEFAULT_TOOL_DISPLAY_CONFIG, mcpOutputMode: "hidden" }));
+	assert.equal(resolvers.length, 1, "registers one resolver when the chain API exists");
+
+	const base = {
+		renderCall: (args: Record<string, unknown>, theme: RenderThemeLike) => ({ args, theme }),
+		renderResult: () => new Text("native", 0, 0),
+	};
+	const passthrough = resolvers[0]("bash", () => base);
+	assert.equal(passthrough, base, "non-MCP tools keep their renderers");
+
+	const wrapped = resolvers[0]("mcp__server__tool", () => base) as {
+		renderCall: (args: Record<string, unknown>, theme: RenderThemeLike) => Text;
+		renderResult: (result: unknown, options: { expanded: boolean; isPartial: boolean }, theme: RenderThemeLike) => unknown;
+	};
+	const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+	const call = wrapped.renderCall({ query: "x" }, theme);
+	const callText = call.render(120).join("\n");
+	assert.match(callText, /MCP mcp__server__tool/);
+
+	const hiddenResult = wrapped.renderResult(
+		{ content: [{ type: "text", text: "payload" }] },
+		{ expanded: false, isPartial: false },
+		theme,
+	) as Text;
+	assert.equal(hiddenResult.render(120).filter((line: string) => line.trim().length > 0).length, 0, "hidden mode shows nothing");
 });
