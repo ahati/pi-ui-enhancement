@@ -18,7 +18,7 @@
     "src",
     "config/config.example.json",
     "README.md",
-    "CHANGELOG.md",
+    "docs/CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
