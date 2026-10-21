@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Codemode file diffs** (ported from [hyein-cbio/pi-codemode-diff](https://github.com/hyein-cbio/pi-codemode-diff), now an integrated feature): `edit`/`write` changes made inside `codemode` script runs render as a budgeted, word-highlighted `File changes` section on the codemode result. Display-only (rendering metadata, never model-facing), survives session resume, annotates error/cancellation-after-write, and can be disabled with `codemodeShowFileDiffs`.
 - Renamed the package to **pi-ui-enhancement** (fork of MasuRii/pi-tool-display). Existing global and project configs under the legacy `pi-tool-display` extension directories are still read; saves use the new `pi-ui-enhancement` directories. The cross-package decoration API symbols (`pi-tool-display.api.v1`) are unchanged for compatibility.
 - Merged all open upstream PRs (#46, #48, #49, #50, #40, #34, #32, #31, #28, #27), jiwnchoi's Shiki code-block rendering, and MrDaGree's deferred ownership + Pi 1.1 renderer chain — see FORK-NOTES.md.
 - Selected fork improvements: bash result Text caching (PeachIceTea), per-turn MCP timer fix (Gucvii), secure symlink-hardened preview path resolution (neumie), explicit diff background colors (leohenon), usable global enabled switch (maplezzk), peer range widened to Pi 1.x.

@@ -34,6 +34,7 @@ OpenCode-style tool rendering for the [Pi coding agent](https://github.com/mario
 - **Three presets**: `opencode`, `balanced`, and `verbose`
 - **Thinking labels** during streaming and final message rendering, with context sanitization to avoid leaking presentation labels back into future model turns
 - **Shiki/TextMate markdown code fence highlighting** with common bundled grammars and configurable Shiki themes
+- **File-change diffs inside codemode calls** — edit and write changes made by `codemode` scripts render as a `File changes` section without entering the model's context
 - **Optional formatted code block panels** that replace raw triple-backtick fences with compact bordered code blocks
 - **Optional native user message box** with markdown-aware rendering and safer ANSI/background handling
 - **Per-tool ownership toggles** so this extension can coexist with other renderer extensions
@@ -245,6 +246,7 @@ Effective configuration is merged as defaults → global config → project conf
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
 | `mcpOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `codemodeOutputMode` | string | `"calls"` | `summary` shows status and counts, `calls` also lists nested tool calls, and `preview` adds output limited by `previewLines` |
+| `codemodeShowFileDiffs` | boolean | `true` | Append the `File changes` diff section (edit/write changes made inside codemode runs) to codemode results |
 | `previewLines` | number | `8` | Lines shown in collapsed preview mode |
 | `expandedPreviewMaxLines` | number | `4000` | Max preview lines when fully expanded |
 | `bashOutputMode` | string | `"opencode"` | `opencode` (collapse), `summary` (line count), or `preview` (show lines) |
@@ -395,6 +397,12 @@ Debug logging is disabled by default. Set `debug` to `true` in the global or act
 By default, native `codemode` calls on Pi 0.99 or later show a compact title, a status summary, and a list of tools called by the script. In `/tool-display`, select **Native codemode output** and choose `summary` for status and counts, `calls` to also list nested tool calls, or `preview` to add returned output. Selections are saved automatically.
 
 **Preview lines** limits only the returned output in `preview` mode, measured in terminal rows after wrapping. All three modes include failure and cancellation counts, even if the script completes successfully. Expand with `Ctrl+O` to see the full script, list of tool calls, and output.
+
+#### Codemode file diffs
+
+When a codemode script runs `edit` or `write` tools, their diffs are captured at execution time and appended to the codemode result as a `File changes` section: per-file headers with `+added`/`-removed` counts, word-highlighted line diffs, and notes for changes whose diff exceeded the display budget (or was binary/oversized). Collapsed results preview up to 3 changes and 8 lines each; expanding shows everything.
+
+The diffs are display-only: they are stored in the result's rendering metadata (never in model-facing content), batched under byte/line budgets, and validated when a resumed session renders them again. Writes that completed but whose tool call later reported an error or cancellation are annotated. Disable the section with `codemodeShowFileDiffs: false`.
 
 ### Edit and write diffs
 
