@@ -1,5 +1,7 @@
 import { Text } from "@earendil-works/pi-tui";
 import { registerCleanup, registerTimer } from "./disposable.js";
+import { extractProgramName } from "./bash-intent.js";
+import { getModalIcons } from "./modal-icons.js";
 
 const BASH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const BASH_SPINNER_INTERVAL_MS = 200;
@@ -9,9 +11,34 @@ const BASH_SPINNER_TOOL_CALL_ID_KEY = "__piToolDisplayBashSpinnerToolCallId";
 interface BashCallArgs {
 	command?: string;
 	commandPrefix?: string;
+	description?: string;
 	shellPath?: string;
 	timeout?: number;
 }
+
+/**
+ * Optional per-call display options.
+ *
+ * `intentMode`/`showCommand` drive the intent header, taken from either an
+ * explicit `description` argument (when a custom shell tool supplies one) or a
+ * leading comment line:
+ *
+ *     # intent: check which files are dirty
+ *     git status --short
+ *
+ * Only the first non-blank line is inspected, and only comment lines qualify, so
+ * an intent can never be mistaken for executable content.
+ *
+ * `maxCommandChars` truncates the displayed command (0 = unlimited).
+ */
+export interface BashCallRenderOptions {
+	intentMode?: "off" | "render" | "render-and-instruct";
+	showCommand?: boolean;
+	maxCommandChars?: number;
+}
+
+const INTENT_COMMENT_PATTERN = /^\s*#\s*intent\s*:\s*(.+?)\s*$/i;
+const TOOL_COMMENT_PATTERN = /^\s*#\s*tool\s*:\s*(.+?)\s*$/i;
 
 interface BashCallRenderTheme {
 	fg(color: string, text: string): string;
@@ -32,6 +59,7 @@ interface BashSpinnerStateCarrier {
 interface BashCallRenderContextLike {
 	executionStarted: boolean;
 	isPartial: boolean;
+	expanded?: boolean;
 	invalidate?: () => void;
 	lastComponent?: unknown;
 	state?: unknown;
@@ -137,6 +165,74 @@ function truncateCommand(command: string, maxChars: number): string {
 	return `${singleLine.slice(0, cutoff)}…`;
 }
 
+/**
+ * Reads the leading `# intent:` / `# tool:` comment block. `tool` is the label the
+ * agent chose for the header (`git status`), which is kept out of the command
+ * parser entirely — a shell command cannot distinguish a subcommand from an
+ * argument, and guessing would need a curated list of programs.
+ *
+ * Never returns `undefined`: a command with no comment block simply yields an
+ * empty result, so the caller decides what to do with it.
+ */
+function parseLeadingComments(
+	command: string,
+): { intent?: string; tool?: string; stripped: string } {
+	const lines = command.split("\n");
+	const intentLines: string[] = [];
+	let tool: string | undefined;
+	let consumed = 0;
+
+	for (const line of lines) {
+		if (line.trim().length === 0 && consumed === 0) {
+			consumed += 1;
+			continue;
+		}
+
+		const toolMatch = TOOL_COMMENT_PATTERN.exec(line);
+		if (toolMatch) {
+			tool ??= toolMatch[1];
+			consumed += 1;
+			continue;
+		}
+
+		const intentMatch = INTENT_COMMENT_PATTERN.exec(line);
+		if (!intentMatch) {
+			break;
+		}
+
+		intentLines.push(intentMatch[1]);
+		consumed += 1;
+	}
+
+	return {
+		intent: intentLines.length > 0 ? intentLines.join(" ") : undefined,
+		tool,
+		stripped: lines.slice(consumed).join("\n").trim(),
+	};
+}
+
+function resolveIntentDisplay(
+	args: BashCallArgs,
+	options: BashCallRenderOptions | undefined,
+): { intent: string; tool?: string; strippedCommand?: string } | undefined {
+	if (!options || options.intentMode === undefined || options.intentMode === "off") {
+		return undefined;
+	}
+
+	const command = typeof args.command === "string" ? args.command : "";
+	const parsed = parseLeadingComments(command);
+
+	// An explicit `description` argument overrides the comment's intent text, but
+	// the `# tool:` label and the stripped command still apply.
+	const explicit = typeof args.description === "string" ? args.description.trim() : "";
+	const intent = explicit.length > 0 ? explicit : parsed.intent;
+	if (intent === undefined) {
+		return undefined;
+	}
+
+	return { intent, tool: parsed.tool, strippedCommand: parsed.stripped };
+}
+
 function buildCommandDisplay(args: BashCallArgs, maxCommandChars?: number): string {
 	const command =
 		typeof args.command === "string" && args.command.trim().length > 0
@@ -149,14 +245,68 @@ function buildCommandDisplay(args: BashCallArgs, maxCommandChars?: number): stri
 	return prefix ? `${prefix} ${command}` : command;
 }
 
+/** Icon detection is terminal-dependent and constant per process. */
+let cachedToolIcon: string | undefined;
+function toolIcon(): string {
+	cachedToolIcon ??= getModalIcons().tool;
+	return cachedToolIcon;
+}
+
+/**
+ * The styled intent header: wrench, program (plus subcommand), then the intent,
+ * with the arguments omitted.
+ *
+ *     🔧 git status · check which files are dirty
+ *
+ * When the tool call is expanded (Ctrl+O) the full command is appended on the
+ * following line, because the header deliberately hides the arguments.
+ */
+function buildIntentHeader(
+	args: BashCallArgs,
+	theme: BashCallRenderTheme,
+	options: BashCallRenderOptions | undefined,
+	expanded?: boolean,
+): string | undefined {
+	const intent = resolveIntentDisplay(args, options);
+	if (!intent) {
+		return undefined;
+	}
+
+	const stripped = (intent.strippedCommand ?? "").trim();
+	// Prefer the agent's own label; otherwise the program is all the command can
+	// tell us without guessing.
+	const label = intent.tool ?? extractProgramName(stripped || args.command || "");
+	const separator = ` ${theme.fg("muted", "·")} `;
+	const intentText = theme.fg("accent", intent.intent);
+
+	// Without a label (e.g. a command made only of `cd` calls) the icon stays but the
+	// separator goes, so the header never renders a dangling `🔧 ·`.
+	const head = label.length > 0
+		? `${toolIcon()} ${theme.fg("toolTitle", theme.bold(label))}${separator}${intentText}`
+		: `${toolIcon()} ${intentText}`;
+
+	// Expanded: the full command replaces the optional one-line suffix.
+	if (expanded) {
+		return stripped.length > 0 ? `${head}\n${theme.fg("muted", stripped)}` : head;
+	}
+
+	if (options?.showCommand && stripped.length > 0) {
+		return `${head}${separator}${theme.fg("muted", stripped.replace(/\s+/g, " "))}`;
+	}
+
+	return head;
+}
+
 function buildBashCallText(
 	args: BashCallArgs,
 	theme: BashCallRenderTheme,
+	options?: BashCallRenderOptions,
+	expanded?: boolean,
 	spinnerFrame?: string,
 	elapsedMs?: number,
-	maxCommandChars?: number,
 ): string {
-	const commandDisplay = buildCommandDisplay(args, maxCommandChars);
+	const commandDisplay = buildCommandDisplay(args, options?.maxCommandChars);
+	const intentHeader = buildIntentHeader(args, theme, options, expanded);
 	const shellSuffix =
 		typeof args.shellPath === "string" &&
 		args.shellPath.trim().length > 0 &&
@@ -172,14 +322,19 @@ function buildBashCallText(
 			? theme.fg("muted", ` · ${formatElapsed(elapsedMs)}`)
 			: "";
 
-	return `${spinnerPrefix}${theme.fg("toolTitle", theme.bold("$"))} ${theme.fg("accent", commandDisplay)}${shellSuffix}${timeoutSuffix}${elapsedSuffix}`;
+	const prompt = intentHeader ?? `${theme.fg("toolTitle", theme.bold("$"))} ${theme.fg("accent", commandDisplay)}`;
+	// Suffixes (shell/timeout/elapsed) belong on the header line, before the
+	// expanded command body appended by buildIntentHeader.
+	const [head, ...rest] = prompt.split("\n");
+	const tail = rest.length > 0 ? `\n${rest.join("\n")}` : "";
+	return `${spinnerPrefix}${head}${shellSuffix}${timeoutSuffix}${elapsedSuffix}${tail}`;
 }
 
 export function renderBashCall(
 	args: BashCallArgs,
 	theme: BashCallRenderTheme,
 	context: BashCallRenderContextLike,
-	maxCommandChars?: number,
+	options?: BashCallRenderOptions,
 ): Text {
 	const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
 	const carrier = toStateCarrier(context.state);
@@ -189,7 +344,7 @@ export function renderBashCall(
 
 	if (!shouldSpin) {
 		stopSpinner(toolCallId, spinnerState);
-		text.setText(buildBashCallText(args, theme, undefined, undefined, maxCommandChars));
+		text.setText(buildBashCallText(args, theme, options, context.expanded === true));
 		return text;
 	}
 
@@ -202,9 +357,10 @@ export function renderBashCall(
 					buildBashCallText(
 						args,
 						theme,
+						options,
+						context.expanded === true,
 						BASH_SPINNER_FRAMES[spinnerState.frameIndex],
 						Date.now() - (spinnerState.startedAt ?? Date.now()),
-						maxCommandChars,
 					),
 				);
 				context.invalidate?.();
@@ -223,6 +379,6 @@ export function renderBashCall(
 	const elapsedMs = spinnerState?.startedAt !== undefined
 		? Date.now() - spinnerState.startedAt
 		: undefined;
-	text.setText(buildBashCallText(args, theme, spinnerFrame, elapsedMs));
+	text.setText(buildBashCallText(args, theme, options, context.expanded === true, spinnerFrame, elapsedMs));
 	return text;
 }

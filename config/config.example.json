@@ -30,6 +30,8 @@
   "bashOutputMode": "opencode",
   "bashCollapsedLines": 10,
   "bashCommandMaxChars": 0,
+  "bashIntentMode": "off",
+  "bashIntentShowCommand": false,
   "diffViewMode": "auto",
   "diffIndicatorMode": "bars",
   "diffSplitMinWidth": 120,
