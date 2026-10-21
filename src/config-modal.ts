@@ -46,6 +46,7 @@ function toolOwnershipSummary(config: ToolDisplayConfig): string {
 function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCapabilities): string {
 	const preset = detectToolDisplayPreset(config);
 	const parts = [
+		`enabled=${toOnOff(config.enabled)}`,
 		`preset=${preset}`,
 		`owners={${toolOwnershipSummary(config)}}`,
 		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
@@ -130,6 +131,26 @@ function buildInspectorSettings(
 ): InspectorSettingItem[] {
 	const configPath = shortenPath(activeConfigPath);
 	const items: InspectorSettingItem[] = [
+		{
+			id: "enabled",
+			label: "Global switch",
+			currentValue: toOnOff(config.enabled),
+			values: ["on", "off"],
+			inspectorTitle: "Global Tool Display Switch",
+			inspectorSummary: [
+				"Enables or disables all tool-display rendering and tool ownership behavior.",
+				"The /tool-display command remains available while disabled so the extension can be enabled again without editing config files.",
+			],
+			inspectorOptions: [
+				"on — enable tool overrides and enhanced rendering",
+				"off — keep the package installed but use Pi's default rendering",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Changing this switch is saved immediately and takes effect after /reload.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["global", "enabled", "disable", "switch", "reload"],
+		},
 		{
 			id: "preset",
 			label: "Preset profile",
@@ -434,12 +455,17 @@ function buildInspectorSettings(
 function applyPreset(preset: ToolDisplayPreset, currentConfig?: ToolDisplayConfig): ToolDisplayConfig {
 	const presetConfig = getToolDisplayPresetConfig(preset);
 	return currentConfig
-		? { ...presetConfig, debug: currentConfig.debug }
+		? { ...presetConfig, debug: currentConfig.debug, enabled: currentConfig.enabled }
 		: presetConfig;
 }
 
 function applySetting(config: ToolDisplayConfig, id: string, value: string): ToolDisplayConfig {
 	switch (id) {
+		case "enabled":
+			return {
+				...config,
+				enabled: value === "on",
+			};
 		case "preset": {
 			const parsed = parseToolDisplayPreset(value);
 			return parsed ? applyPreset(parsed, config) : config;

@@ -176,9 +176,9 @@ export function createToolDisplayConfigController(pi: ExtensionAPI): ToolDisplay
 
       reloadConfig();
 
-      if (ownershipChanged(previous, config)) {
+      if (ownershipChanged(previous, config) || previous.enabled !== config.enabled) {
         ctx.ui.notify(
-          "Tool ownership updates apply after /reload.",
+          "Global switch or tool ownership updates apply after /reload.",
           "warning",
         );
       }

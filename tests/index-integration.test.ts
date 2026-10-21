@@ -191,6 +191,45 @@ test("entry point registers expected lifecycle handlers", () => {
   assert.ok(beforeAgentStartCount >= 1, "at least one before_agent_start handler registered");
 });
 
+test("disabled config keeps the tool-display command but skips renderer registration", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-tool-display-disabled-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(dir, "agent");
+  const configDir = join(dir, "agent", "extensions", "pi-tool-display");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "config.json"), JSON.stringify({ enabled: false }), "utf8");
+
+  try {
+    const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
+    toolDisplayExtension(api);
+
+    assert.ok(
+      capturedCommands.some((c) => c.name === "tool-display"),
+      "/tool-display command stays registered while disabled",
+    );
+    assert.deepEqual(capturedTools, [], "no tool overrides register while disabled");
+
+    // The settings summary reports the switch so users can discover it.
+    const notifications: Notification[] = [];
+    const ctx = {
+      ui: {
+        theme: { fg: (_c: string, t: string) => t },
+        notify: (message: string, level: string) => notifications.push({ message, level }),
+      },
+    };
+    const command = capturedCommands.find((c) => c.name === "tool-display");
+    await command?.handler?.("show", ctx);
+    assert.match(notifications[0]?.message ?? "", /enabled=off/);
+  } finally {
+    if (previousAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("entry point registers tool-display command", () => {
   const { api, capturedCommands } = createApiStub();
   toolDisplayExtension(api);

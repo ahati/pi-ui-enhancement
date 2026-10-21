@@ -17,9 +17,10 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
   resetDisposed();
 
   const configController = createToolDisplayConfigController(pi);
-  if (!configController.getConfig().enabled) {
-    return;
-  }
+  // Renderers are gated on `enabled`, but the /tool-display command always
+  // registers so the extension can be re-enabled from the UI without editing
+  // config.json by hand (maplezzk's global switch).
+  const enabled = configController.getConfig().enabled;
 
   configureToolDisplayDebugLogger(configController.getDebugRuntimeConfig);
 
@@ -39,12 +40,14 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
   });
 
-  registerToolDisplayOverrides(pi, configController.getEffectiveConfig);
-  registerCodemodeDisplay(pi, configController.getConfig);
-  registerNativeUserMessageBox(pi, configController.getConfig);
-  registerThinkingLabeling(pi);
-  registerToolExecutionMcpPatch(pi, configController.getEffectiveConfig);
-  registerShikiCodeBlockRenderer(configController.getConfig);
+  if (enabled) {
+    registerToolDisplayOverrides(pi, configController.getEffectiveConfig);
+    registerCodemodeDisplay(pi, configController.getConfig);
+    registerNativeUserMessageBox(pi, configController.getConfig);
+    registerThinkingLabeling(pi);
+    registerToolExecutionMcpPatch(pi, configController.getEffectiveConfig);
+    registerShikiCodeBlockRenderer(configController.getConfig);
+  }
 
   pi.registerCommand("tool-display", {
     description: "Configure tool output rendering (OpenCode-style)",
