@@ -60,3 +60,34 @@ test("e2e: wildcard can be disabled to pass unknown tools through", async () => 
   const r = resolver("apply_patch", next) as { renderCall?: unknown };
   assert.equal(r.renderCall, nativeCall, "wildcard off -> native renderer kept");
 });
+
+test("disabling a built-in override keeps the owner's renderer (no wildcard hijack)", async () => {
+  const { api, resolvers, handlers } = buildHost();
+  registerToolDisplayOverrides(api, () =>
+    normalizeToolDisplayConfig({ registerToolOverrides: { edit: false, write: false } }),
+  );
+  await handlers.get("session_start")?.();
+  const resolver = resolvers[0];
+  const nativeCall = () => "PI_DIFF_RENDERER";
+  const next = () => ({ renderCall: nativeCall, renderResult: () => "PI_DIFF_RENDERER" });
+
+  for (const name of ["edit", "write"]) {
+    const r = resolver(name, next) as { renderCall?: unknown };
+    assert.equal(r.renderCall, nativeCall, `${name} keeps the owner's renderer when our override is off`);
+  }
+});
+
+test("built-ins we own win over the wildcard, MCP and codemode are never wildcarded", async () => {
+  const { api, resolvers, handlers } = buildHost();
+  registerToolDisplayOverrides(api, () => normalizeToolDisplayConfig({}));
+  await handlers.get("session_start")?.();
+  const resolver = resolvers[0];
+  const nativeCall = () => "NATIVE";
+  const next = () => ({ renderCall: nativeCall, renderResult: () => "NATIVE" });
+
+  assert.notEqual((resolver("read", next) as { renderCall?: unknown }).renderCall, nativeCall, "read uses ours");
+  for (const name of ["codemode", "mcp__srv__tool", "mcp"]) {
+    const r = resolver(name, next) as { renderCall?: unknown };
+    assert.equal(r.renderCall, nativeCall, `${name} is left to its specialized resolver`);
+  }
+});

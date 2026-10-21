@@ -2312,6 +2312,13 @@ export function registerToolDisplayOverrides(
         return { ...next(), ...ours };
       }
 
+      // A built-in the user turned off keeps the owner's native renderer; the
+      // wildcard must never hijack a built-in (that would silently replace
+      // e.g. pi-diff's edit rendering with the generic one).
+      if (isBuiltInToolName(toolName)) {
+        return next();
+      }
+
       // MCP tools and codemode have their own resolvers (registered after this
       // one) and must keep their specialized renderers.
       if (toolName === "codemode" || isMcpToolNameCandidate(toolName)) {
