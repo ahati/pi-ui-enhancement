@@ -250,7 +250,7 @@ test("split diff renderer preserves full background coverage inside the default 
 	const ansiTheme = {
 		fg: (_color: string, text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[0m`,
 		bold: (text: string): string => text,
-		getFgAnsi: (slot: string): string | undefined => {
+		getFgAnsi: (slot: string): string => {
 			if (slot === "toolDiffAdded") {
 				return `\x1b[38;2;${addFg.r};${addFg.g};${addFg.b}m`;
 			}
@@ -260,13 +260,13 @@ test("split diff renderer preserves full background coverage inside the default 
 			if (slot === "dim") {
 				return "\x1b[38;5;8m";
 			}
-			return undefined;
+			return "";
 		},
-		getBgAnsi: (slot: string): string | undefined => {
+		getBgAnsi: (slot: string): string => {
 			if (slot === "toolSuccessBg") {
 				return `\x1b[48;2;${baseBg.r};${baseBg.g};${baseBg.b}m`;
 			}
-			return undefined;
+			return "";
 		},
 	};
 	const component = renderEditDiffResult(
@@ -318,7 +318,7 @@ test("split diff falls back to theme.bg when the default tool shell provides the
 				return text;
 			},
 			bold: (text: string): string => text,
-			getFgAnsi: (slot: string): string | undefined => {
+			getFgAnsi: (slot: string): string => {
 				if (slot === "toolDiffAdded") {
 					return `\x1b[38;2;${addFg.r};${addFg.g};${addFg.b}m`;
 				}
@@ -328,7 +328,7 @@ test("split diff falls back to theme.bg when the default tool shell provides the
 				if (slot === "dim") {
 					return "\x1b[38;5;8m";
 				}
-				return undefined;
+				return "";
 			},
 		},
 		"",
@@ -353,20 +353,20 @@ test("row backgrounds keep trailing padding painted to the rendered width", () =
 	const ansiTheme = {
 		fg: (_color: string, text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[0m`,
 		bold: (text: string): string => text,
-		getFgAnsi: (slot: string): string | undefined => {
+		getFgAnsi: (slot: string): string => {
 			if (slot === "toolDiffAdded") {
 				return `\x1b[38;2;${addFg.r};${addFg.g};${addFg.b}m`;
 			}
 			if (slot === "toolDiffRemoved") {
 				return `\x1b[38;2;${removeFg.r};${removeFg.g};${removeFg.b}m`;
 			}
-			return undefined;
+			return "";
 		},
-		getBgAnsi: (slot: string): string | undefined => {
+		getBgAnsi: (slot: string): string => {
 			if (slot === "toolSuccessBg") {
 				return `\x1b[48;2;${baseBg.r};${baseBg.g};${baseBg.b}m`;
 			}
-			return undefined;
+			return "";
 		},
 	};
 	const component = renderEditDiffResult(
@@ -408,20 +408,20 @@ test("inline emphasis backgrounds remain visible while row backgrounds still rec
 	const ansiTheme = {
 		fg: (_color: string, text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[0m`,
 		bold: (text: string): string => text,
-		getFgAnsi: (slot: string): string | undefined => {
+		getFgAnsi: (slot: string): string => {
 			if (slot === "toolDiffAdded") {
 				return `\x1b[38;2;${addFg.r};${addFg.g};${addFg.b}m`;
 			}
 			if (slot === "toolDiffRemoved") {
 				return `\x1b[38;2;${removeFg.r};${removeFg.g};${removeFg.b}m`;
 			}
-			return undefined;
+			return "";
 		},
-		getBgAnsi: (slot: string): string | undefined => {
+		getBgAnsi: (slot: string): string => {
 			if (slot === "toolSuccessBg") {
 				return `\x1b[48;2;${baseBg.r};${baseBg.g};${baseBg.b}m`;
 			}
-			return undefined;
+			return "";
 		},
 	};
 	const component = renderEditDiffResult(

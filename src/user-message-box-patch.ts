@@ -1,4 +1,4 @@
-export type UserMessageRenderFn = (width: number) => string[];
+export type UserMessageRenderFn = (this: unknown, width: number) => string[];
 
 const USER_MESSAGE_PATCH_OWNER = {};
 

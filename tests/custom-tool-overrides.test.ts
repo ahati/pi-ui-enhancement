@@ -123,7 +123,7 @@ function renderToolRawResult(
 ): string {
 	assert.equal(typeof tool.renderResult, "function", `expected ${tool.name} to have renderResult`);
 	return renderToText(
-		tool.renderResult(
+		tool.renderResult!(
 			result,
 			{ expanded: false, isPartial: false, ...options },
 			createTheme(),

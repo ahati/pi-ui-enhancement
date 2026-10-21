@@ -133,7 +133,7 @@ test("registerToolDisplayOverrides survives unavailable load-time discovery and 
 	// PR #34 defers registration; a discovery failure at load time must not throw
 	// and must not prevent the lifecycle pass from registering the renderers.
 	assert.doesNotThrow(() => registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG));
-	assert.deepEqual(registeredTools, []);
+	assert.deepEqual(registeredTools.map((tool) => tool.name), []);
 
 	await eventHandlers.before_agent_start?.();
 
@@ -370,7 +370,7 @@ test("registerToolDisplayOverrides defers ownership to session start and never s
 		createLateBoundExtensionApiStub();
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.deepEqual(registeredTools, [], "no built-in tool registers while ownership is unknown");
+	assert.deepEqual(registeredTools.map((tool) => tool.name), [], "no built-in tool registers while ownership is unknown");
 	assert.equal(rendererResolvers.length, 1, "renderers are captured for the renderer chain during load");
 
 	bindToolRegistry([
@@ -399,7 +399,7 @@ test("registerToolDisplayOverrides registers built-in overrides at session start
 	const { api, registeredTools, eventHandlers, bindToolRegistry } = createLateBoundExtensionApiStub();
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.deepEqual(registeredTools, []);
+	assert.deepEqual(registeredTools.map((tool) => tool.name), []);
 
 	bindToolRegistry([]);
 	await eventHandlers.session_start?.();

@@ -613,7 +613,7 @@ test("message_update malformed: null content array item passes through", async (
   await handlers.get("message_update")?.(event, { ui: { theme: PASSTHROUGH_THEME } });
 
   assert.strictEqual(event.message.content[0], null);
-  assert.equal(event.message.content[1].thinking, "Thinking: reasoning");
+  assert.equal(event.message.content[1]?.thinking, "Thinking: reasoning");
 });
 
 test("message_update malformed: undefined content array item passes through", async () => {
@@ -629,7 +629,7 @@ test("message_update malformed: undefined content array item passes through", as
   await handlers.get("message_update")?.(event, { ui: { theme: PASSTHROUGH_THEME } });
 
   assert.strictEqual(event.message.content[0], undefined);
-  assert.equal(event.message.content[1].thinking, "Thinking: reasoning");
+  assert.equal(event.message.content[1]?.thinking, "Thinking: reasoning");
 });
 
 test("message_update malformed: non-array content passes through unchanged", async () => {

@@ -91,7 +91,7 @@ export function registerCodemodeDisplay(
     );
   });
 
-  const getCallRenderer: ToolRendererLookup["getCallRenderer"] = function () {
+  const getCallRenderer: ToolRendererLookup["getCallRenderer"] = function (this: ToolRendererLookup) {
     const original = originalCall.call(this);
     if (!nativeCodemode || this.toolName !== "codemode" || !original) return original;
     return (args, theme, context) => {
@@ -100,7 +100,7 @@ export function registerCodemodeDisplay(
     };
   };
 
-  const getResultRenderer: ToolRendererLookup["getResultRenderer"] = function () {
+  const getResultRenderer: ToolRendererLookup["getResultRenderer"] = function (this: ToolRendererLookup) {
     const original = originalResult.call(this);
     if (!nativeCodemode || this.toolName !== "codemode" || !original) return original;
     return (result, options, theme, context) => {

@@ -175,7 +175,7 @@ export interface ToolDisplayAdapter {
   pathFields?: string[];
   getPath?: (args: unknown) => string | undefined;
   getEditLineCount?: (args: unknown) => number;
-  renderCall?: (args: unknown, theme: RenderTheme, context: ToolRenderContextLike) => unknown;
+  renderCall?: (args: unknown, theme: RenderTheme, context?: ToolRenderContextLike) => unknown;
   renderResult?: (result: unknown, options: ToolRenderResultOptions, theme: RenderTheme, context?: ToolRenderContextLike) => unknown;
 }
 
@@ -1559,7 +1559,7 @@ function installToolDisplayApi(getConfig: ConfigGetter): ToolDisplayApi {
         } else if (kind === "read" && (overrideExisting || typeof decorated.renderCall !== "function")) {
           decorated.renderCall = (args: unknown, theme: RenderTheme) => renderReadDisplayCall(args, theme, resolvedAdapter);
         } else if (kind === "edit" && (overrideExisting || typeof decorated.renderCall !== "function")) {
-          decorated.renderCall = (args: unknown, theme: RenderTheme, context: ToolRenderContextLike) => renderEditDisplayCall(args, theme, context, resolvedAdapter, getConfig);
+          decorated.renderCall = (args: unknown, theme: RenderTheme, context?: ToolRenderContextLike) => renderEditDisplayCall(args, theme, context, resolvedAdapter, getConfig);
         } else if (kind === "mcp" && (overrideExisting || typeof decorated.renderCall !== "function")) {
           decorated.renderCall = (args: unknown, theme: RenderTheme) => {
             const toolName = getTextField(decorated, "name") ?? "mcp";
@@ -1778,7 +1778,7 @@ export function registerToolDisplayOverrides(
     pluralLabel?: string,
   ): Text => {
     const config = getConfig();
-    return renderSearchResult(result as never, options, config, theme, unitLabel, result.details, pluralLabel);
+    return renderSearchResult(result as never, options, config, theme, unitLabel, result.details as Parameters<typeof renderSearchResult>[5], pluralLabel);
   };
 
   const buildSearchCallSuffix = (args: Record<string, unknown>): { scope: string; limitSuffix: string } => {
@@ -1910,7 +1910,7 @@ export function registerToolDisplayOverrides(
         ? formatWriteCallSuffix(lineCount, sizeBytes, theme)
         : "";
       const summaryText = `${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", path || "...")}${suffix}`;
-      if (!context.argsComplete || !context.isPartial) {
+      if (!context?.argsComplete || !context?.isPartial) {
         return textResult(summaryText);
       }
 
