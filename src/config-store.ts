@@ -423,6 +423,10 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 		searchOutputMode: toSearchOutputMode(source.searchOutputMode),
 		mcpOutputMode: toMcpOutputMode(source.mcpOutputMode),
 		codemodeOutputMode,
+		codemodeShowFileDiffs: toBoolean(
+			source.codemodeShowFileDiffs,
+			DEFAULT_TOOL_DISPLAY_CONFIG.codemodeShowFileDiffs,
+		),
 		previewLines: clampNumber(source.previewLines, 1, 80, DEFAULT_TOOL_DISPLAY_CONFIG.previewLines),
 		expandedPreviewMaxLines: clampNumber(
 			source.expandedPreviewMaxLines,

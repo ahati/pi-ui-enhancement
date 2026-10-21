@@ -1638,9 +1638,20 @@ function tryGetAllTools(pi: ExtensionAPI, debugMessage: string): unknown[] | und
   }
 }
 
+export interface CodemodeWriteObserver {
+  isNested(toolCallId: string): boolean;
+  record(
+    toolCallId: string,
+    path: string,
+    previous: { existed: boolean; content?: string },
+    content: string,
+  ): void;
+}
+
 export function registerToolDisplayOverrides(
   pi: ExtensionAPI,
   getConfig: ConfigGetter,
+  codemodeWriteObserver?: CodemodeWriteObserver,
 ): void {
   clearBuiltInToolCache();
   const toolDisplayApi = installToolDisplayApi(getConfig);
@@ -1909,12 +1920,25 @@ export function registerToolDisplayOverrides(
         previousContent: previous.content,
       });
 
-      return getBuiltInTools(ctx.cwd).write.execute(
+      const result = await getBuiltInTools(ctx.cwd).write.execute(
         toolCallId,
         params as never,
         signal,
         onUpdate as never,
       );
+
+      // Codemode diff feature: when this write runs nested inside a codemode
+      // script, record a display diff for the codemode call's File changes
+      // section. Diff computation must never alter the write's outcome.
+      if (codemodeWriteObserver?.isNested(toolCallId) && typeof params.path === "string") {
+        try {
+          codemodeWriteObserver.record(toolCallId, params.path, previous, getToolContentArg(params) ?? "");
+        } catch {
+          // A failed diff capture must not fail the write.
+        }
+      }
+
+      return result;
     },
     renderCall(args, theme, context) {
       const content = getToolContentArg(args);

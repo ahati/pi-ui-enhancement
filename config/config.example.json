@@ -30,6 +30,7 @@
   "searchOutputMode": "hidden",
   "mcpOutputMode": "hidden",
   "codemodeOutputMode": "calls",
+  "codemodeShowFileDiffs": true,
   "previewLines": 8,
   "expandedPreviewMaxLines": 4000,
   "bashOutputMode": "opencode",

@@ -1,6 +1,9 @@
 import { keyHint, ToolExecutionComponent, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component } from "@earendil-works/pi-tui";
 import { registerCleanup } from "./disposable.js";
+import type { Capture } from "./codemode-diff/capture.js";
+import { readChanges } from "./codemode-diff/changes.js";
+import { diffSection } from "./codemode-diff/section.js";
 import { isRecord } from "./tool-metadata.js";
 import { compactOutputLines, extractTextOutput, pluralize, previewLines, sanitizeAnsiForThemedOutput, splitLines } from "./render-utils.js";
 import type { ToolDisplayConfig } from "./types.js";
@@ -75,7 +78,8 @@ function renderOutputPreview(
 
 export function registerCodemodeDisplay(
   pi: CodemodeDisplayHost,
-  getConfig: () => Pick<ToolDisplayConfig, "codemodeOutputMode" | "previewLines">,
+  getConfig: () => Pick<ToolDisplayConfig, "codemodeOutputMode" | "previewLines" | "codemodeShowFileDiffs">,
+  capture?: Capture,
 ): void {
   // ponytail: uses private TUI lookups until Pi exposes renderer-only registration.
   const rawPrototype: unknown = ToolExecutionComponent.prototype;
@@ -107,6 +111,7 @@ export function registerCodemodeDisplay(
       // Our collapsed Container cannot be reused as the native renderer's Text component.
       const nativeContext = { ...context, lastComponent: undefined };
       if (options.expanded) return original(result, options, theme, nativeContext);
+      const expanded = false;
       const counts = { running: 0, ok: 0, error: 0, cancelled: 0 };
       const details: unknown = result.details;
       if (details !== undefined) {
@@ -129,10 +134,31 @@ export function registerCodemodeDisplay(
       }
       const summary = renderSummary(counts, options, theme, context.isError);
       const config = getConfig();
-      if (config.codemodeOutputMode === "summary") return summary;
+
+      // File-change diffs captured inside the codemode run (pi-codemode-diff
+      // feature): live from the capture during the run, persisted in details
+      // for resumed sessions.
+      const toolCallId = typeof context.toolCallId === "string" ? context.toolCallId : "";
+      if (typeof context.invalidate === "function" && toolCallId) {
+        capture?.watch(toolCallId, context.invalidate);
+      }
+      const changes = config.codemodeShowFileDiffs
+        ? readChanges(result.details) ?? (toolCallId ? capture?.changes(toolCallId) : undefined)
+        : undefined;
+
+      if (config.codemodeOutputMode === "summary") {
+        if (!changes?.length) return summary;
+        const summaryWithDiffs = new Container();
+        summaryWithDiffs.addChild(summary);
+        summaryWithDiffs.addChild(diffSection(changes, expanded, theme));
+        return summaryWithDiffs;
+      }
       const container = new Container();
       container.addChild(summary);
       container.addChild(original({ ...result, content: [] }, options, theme, nativeContext));
+      if (changes?.length) {
+        container.addChild(diffSection(changes, expanded, theme));
+      }
       if (config.codemodeOutputMode === "preview" && !options.isPartial) {
         container.addChild(renderOutputPreview(result, config.previewLines, theme, context.isError));
       }

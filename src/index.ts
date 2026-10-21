@@ -3,6 +3,8 @@ import { createToolDisplayConfigController } from "./config-controller.js";
 import { registerToolDisplayOverrides } from "./tool-overrides.js";
 import { buildBashIntentSystemPrompt } from "./bash-intent.js";
 import { registerCodemodeDisplay } from "./codemode-display.js";
+import { Capture, registerCodemodeDiffCapture } from "./codemode-diff/index.js";
+import { writeChange } from "./codemode-diff/changes.js";
 import { disposeAll, resetDisposed } from "./disposable.js";
 import { configureToolDisplayDebugLogger } from "./debug-logger.js";
 import { registerThinkingLabeling } from "./thinking-label.js";
@@ -40,9 +42,22 @@ export default function toolDisplayExtension(pi: ExtensionAPI): void {
     }
   });
 
+  const codemodeDiffCapture = new Capture();
+
   if (enabled) {
-    registerToolDisplayOverrides(pi, configController.getEffectiveConfig);
-    registerCodemodeDisplay(pi, configController.getConfig);
+    registerToolDisplayOverrides(pi, configController.getEffectiveConfig, {
+      isNested: (toolCallId) => codemodeDiffCapture.isNested(toolCallId),
+      record: (toolCallId, path, previous, content) => {
+        const before = !previous.existed
+          ? { kind: "missing" as const }
+          : previous.content !== undefined
+            ? { kind: "text" as const, content: previous.content }
+            : { kind: "omitted" as const, sizeBytes: 0 };
+        codemodeDiffCapture.add(writeChange(toolCallId, path, before, content));
+      },
+    });
+    registerCodemodeDisplay(pi, configController.getConfig, codemodeDiffCapture);
+    registerCodemodeDiffCapture(pi, codemodeDiffCapture);
     registerNativeUserMessageBox(pi, configController.getConfig);
     registerThinkingLabeling(pi);
     registerToolExecutionMcpPatch(pi, configController.getEffectiveConfig);

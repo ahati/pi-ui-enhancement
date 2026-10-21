@@ -72,6 +72,8 @@ export interface ToolDisplayConfig {
 	searchOutputMode: SearchOutputMode;
 	mcpOutputMode: McpOutputMode;
 	codemodeOutputMode: "summary" | "calls" | "preview";
+	/** Show edit/write diffs captured inside codemode runs (pi-codemode-diff feature). */
+	codemodeShowFileDiffs: boolean;
 	previewLines: number;
 	expandedPreviewMaxLines: number;
 	bashOutputMode: BashOutputMode;
@@ -101,6 +103,7 @@ export const TOOL_DISPLAY_SCALAR_CONFIG_KEYS = [
 	"searchOutputMode",
 	"mcpOutputMode",
 	"codemodeOutputMode",
+	"codemodeShowFileDiffs",
 	"previewLines",
 	"expandedPreviewMaxLines",
 	"bashOutputMode",
@@ -145,6 +148,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	searchOutputMode: "hidden",
 	mcpOutputMode: "hidden",
 	codemodeOutputMode: "calls",
+	codemodeShowFileDiffs: true,
 	previewLines: 8,
 	expandedPreviewMaxLines: 4000,
 	bashOutputMode: "opencode",

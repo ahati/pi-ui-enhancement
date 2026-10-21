@@ -19,12 +19,16 @@ const renderers = {
 };
 
 function install(path = "builtin:codemode", getConfig = () => normalizeToolDisplayConfig({})) {
+  return installWithCapture(path, getConfig);
+}
+
+function installWithCapture(path: string, getConfig: () => ReturnType<typeof normalizeToolDisplayConfig>, capture?: import("../src/codemode-diff/capture.ts").Capture) {
   resetDisposed();
   const handlers = new Map<string, () => void>();
   registerCodemodeDisplay({
     getAllTools: () => [{ name: "codemode", sourceInfo: { path } }],
     on(event, handler) { handlers.set(event, handler); },
-  }, getConfig);
+  }, getConfig, capture);
   handlers.get("session_start")!();
   return () => {
     handlers.get("session_shutdown")!();
@@ -140,4 +144,74 @@ test("other tools, non-native codemode, and shutdown keep original rendering", (
   custom.updateResult(result([]));
   assert.match(displayed(custom), /example\.ts/);
   stopCustom();
+});
+
+// ─── Codemode file diffs (pi-codemode-diff feature) ─────────────────────────
+
+test("codemode results include the File changes section from captured diffs", async () => {
+  const { Capture } = await import("../src/codemode-diff/capture.ts");
+  const capture = new Capture();
+  capture.start("call-1", "codemode");
+  capture.start("e1", "edit", "call-1");
+  capture.add({
+    toolCallId: "e1",
+    tool: "edit",
+    path: "src/feature.ts",
+    kind: "edit",
+    diff: "- 10 const old = 1;\n+ 10 const updated = 2;",
+  });
+
+  const cleanup = installWithCapture("builtin:codemode", () => normalizeToolDisplayConfig({}), capture);
+  try {
+    const view = component();
+    view.updateResult(result(["ok"]));
+    const text = displayed(view);
+    assert.match(text, /File changes \(1\) · 1 file/);
+    assert.match(text, /src\/feature\.ts/);
+    assert.match(text, /const updated = 2;/);
+  } finally {
+    cleanup();
+  }
+});
+
+test("codemode file diffs can be disabled via codemodeShowFileDiffs", async () => {
+  const { Capture } = await import("../src/codemode-diff/capture.ts");
+  const capture = new Capture();
+  capture.start("call-1", "codemode");
+  capture.start("e1", "edit", "call-1");
+  capture.add({ toolCallId: "e1", tool: "edit", path: "src/off.ts", kind: "edit", diff: "+ 1 x" });
+
+  const cleanup = installWithCapture("builtin:codemode", () =>
+    normalizeToolDisplayConfig({ codemodeShowFileDiffs: false }), capture);
+  try {
+    const view = component();
+    view.updateResult(result(["ok"]));
+    const text = displayed(view);
+    assert.ok(!text.includes("File changes"), `expected no diff section, got: ${text}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test("persisted diff details render for resumed sessions", async () => {
+  const { DETAILS_KEY } = await import("../src/codemode-diff/changes.ts");
+  const cleanup = install("builtin:codemode");
+  try {
+    const view = component();
+    const data = result(["ok"]) as ReturnType<typeof result> & { details: Record<string, unknown> };
+    data.details = {
+      ...data.details,
+      [DETAILS_KEY]: {
+        version: 1,
+        changes: [{ toolCallId: "e1", tool: "edit", path: "src/resumed.ts", kind: "edit", diff: "+ 1 persisted" }],
+      },
+    };
+    view.updateResult(data);
+    const text = displayed(view);
+    assert.match(text, /File changes \(1\)/);
+    assert.match(text, /src\/resumed\.ts/);
+    assert.match(text, /persisted/);
+  } finally {
+    cleanup();
+  }
 });

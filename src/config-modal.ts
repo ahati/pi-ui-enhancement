@@ -265,6 +265,26 @@ function buildInspectorSettings(
 
 	items.push(
 		{
+			id: "codemodeShowFileDiffs",
+			label: "Codemode file diffs",
+			currentValue: toOnOff(config.codemodeShowFileDiffs),
+			values: ["on", "off"],
+			inspectorTitle: "Codemode File Diffs",
+			inspectorSummary: [
+				"Shows edit and write diffs captured inside codemode script runs as a File changes section, without adding them to the model's context.",
+				"Diffs are display-only, budgeted, and survive session resume via rendering metadata.",
+			],
+			inspectorOptions: [
+				"on — append the File changes section to codemode results",
+				"off — keep status, call trace, and output preview only",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Collapsed previews show up to 3 changes and 8 lines each; expand a call for the full diff.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["codemode", "diff", "file", "changes", "script"],
+		},
+		{
 			id: "previewLines",
 			label: "Preview lines",
 			currentValue: String(config.previewLines),
@@ -502,6 +522,11 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			};
 		case "codemodeOutputMode":
 			return normalizeToolDisplayConfig({ ...config, codemodeOutputMode: value });
+		case "codemodeShowFileDiffs":
+			return {
+				...config,
+				codemodeShowFileDiffs: value === "on",
+			};
 		case "previewLines":
 			return {
 				...config,
