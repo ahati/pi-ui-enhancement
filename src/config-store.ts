@@ -183,6 +183,7 @@ export function normalizeCustomToolOverrideEntry(rawEntry: unknown): CustomToolO
 		enabled: toBoolean(source.enabled, true),
 		kind: toCustomToolOverrideKind(source.kind),
 		outputMode: toCustomToolOutputMode(source.outputMode),
+		...(source.preserveCallRenderer === true ? { preserveCallRenderer: true } : {}),
 	};
 }
 
