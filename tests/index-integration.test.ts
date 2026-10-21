@@ -94,19 +94,22 @@ test("entry point registers tool-display command", () => {
   assert.ok(cmdNames.includes("tool-display"), "tool-display command registered");
 });
 
-test("entry point registers built-in tool overrides", () => {
-  const { api, capturedTools } = createApiStub();
+test("entry point defers built-in tool overrides until the session lifecycle", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
 
-  const toolNames = capturedTools.map((t) => t.name);
-  // find, ls, write are registered immediately; read/grep/edit/bash are deferred
-  assert.ok(toolNames.includes("find"), "find tool override registered");
-  assert.ok(toolNames.includes("ls"), "ls tool override registered");
-  assert.ok(toolNames.includes("write"), "write tool override registered");
+  // PR #34: nothing is registered at load time, so another extension that owns
+  // a built-in (for example pi-patty-bg-tasks owning `bash`) can win cleanly.
+  assert.deepEqual(capturedTools.map((t) => t.name), []);
 
-  // Disabled tools (if config disables them) would not appear; the default
-  // config enables all, so we expect at least these 3 immediately.
-  assert.ok(toolNames.length >= 3, "at least 3 tool overrides registered immediately");
+  const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
+  assert.ok(sessionHandler, "session_start handler captured");
+  await sessionHandler({}, { ui: { notify: () => {} } });
+
+  assert.deepEqual(
+    capturedTools.map((t) => t.name).sort(),
+    ["bash", "edit", "find", "grep", "ls", "read", "write"],
+  );
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -138,7 +141,7 @@ test("before_agent_start handler refreshes capabilities without crashing", async
   await assert.doesNotReject(async () => beforeHandler());
 });
 
-test("multiple calls to toolDisplayExtension are idempotent", () => {
+test("multiple calls to toolDisplayExtension are idempotent", async () => {
   const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
 
   // Call twice
@@ -148,10 +151,14 @@ test("multiple calls to toolDisplayExtension are idempotent", () => {
   // Second call should not throw. Tools may be registered again (that's up
   // to the extension loader to deduplicate), but the extension itself must
   // not crash.
+  const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
+  assert.ok(sessionHandler, "session_start handler captured");
+  await sessionHandler({}, { ui: { notify: () => {} } });
+
   const toolNames = capturedTools.map((t) => t.name);
-  assert.ok(toolNames.filter((n) => n === "find").length >= 1, "find registered at least once");
-  assert.ok(toolNames.filter((n) => n === "ls").length >= 1, "ls registered at least once");
-  assert.ok(toolNames.filter((n) => n === "write").length >= 1, "write registered at least once");
+  for (const name of ["find", "ls", "write"] as const) {
+    assert.equal(toolNames.filter((n) => n === name).length, 1, `${name} registered once`);
+  }
 
   const cmdNames = capturedCommands.map((c) => c.name);
   assert.ok(cmdNames.filter((n) => n === "tool-display").length >= 1, "command registered at least once");
@@ -334,14 +341,16 @@ test("overridden tools include renderCall and renderResult functions", () => {
   }
 });
 
-test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", () => {
-  const { api, capturedTools } = createApiStub();
+test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", async () => {
+  const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
+
+  const sessionHandler = capturedHandlers.find((h) => h.event === "session_start")?.handler;
+  assert.ok(sessionHandler, "session_start handler captured");
+  await sessionHandler({}, { ui: { notify: () => {} } });
 
   const byName = new Map(capturedTools.map((t) => [t.name, t]));
 
-  // read (deferred) won't be registered immediately; it's deferred
-  // So we only check tools registered immediately
   for (const name of ["find", "ls", "write"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} is registered`);
