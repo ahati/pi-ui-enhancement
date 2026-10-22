@@ -25,6 +25,7 @@ import {
 	type ConfigSaveResult,
 	type CustomToolOverrideConfig,
 	DIFF_INDICATOR_MODES,
+	DIFF_SYNTAX_HIGHLIGHTING_MODES,
 	DIFF_VIEW_MODES,
 	MCP_OUTPUT_MODES,
 	READ_OUTPUT_MODES,
@@ -157,6 +158,16 @@ function toDiffIndicatorMode(value: unknown): ToolDisplayConfig["diffIndicatorMo
 	return DIFF_INDICATOR_MODES.includes(value as ToolDisplayConfig["diffIndicatorMode"])
 		? (value as ToolDisplayConfig["diffIndicatorMode"])
 		: DEFAULT_TOOL_DISPLAY_CONFIG.diffIndicatorMode;
+}
+
+function toDiffSyntaxHighlighting(value: unknown): ToolDisplayConfig["diffSyntaxHighlighting"] {
+	// "basic" was previously the only behavior; treat legacy booleans gracefully.
+	if (typeof value === "boolean") {
+		return value ? "basic" : "off";
+	}
+	return DIFF_SYNTAX_HIGHLIGHTING_MODES.includes(value as ToolDisplayConfig["diffSyntaxHighlighting"])
+		? (value as ToolDisplayConfig["diffSyntaxHighlighting"])
+		: DEFAULT_TOOL_DISPLAY_CONFIG.diffSyntaxHighlighting;
 }
 
 function toShikiCodeBlockTheme(value: unknown): ToolDisplayConfig["shikiCodeBlockTheme"] {
@@ -468,6 +479,7 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 		diffRemovedBg: toHexColor(source.diffRemovedBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffRemovedBg),
 		diffAddedEmphasisBg: toHexColor(source.diffAddedEmphasisBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffAddedEmphasisBg),
 		diffRemovedEmphasisBg: toHexColor(source.diffRemovedEmphasisBg, DEFAULT_TOOL_DISPLAY_CONFIG.diffRemovedEmphasisBg),
+		diffSyntaxHighlighting: toDiffSyntaxHighlighting(source.diffSyntaxHighlighting),
 		allowExternalDiffPreviews: toBoolean(
 			source.allowExternalDiffPreviews,
 			DEFAULT_TOOL_DISPLAY_CONFIG.allowExternalDiffPreviews,

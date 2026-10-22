@@ -16,6 +16,36 @@ import { shortenPath } from "./render-utils.js";
 import type { InspectorSettingItem } from "./settings-inspector-modal.js";
 import { CUSTOM_TOOL_OVERRIDE_WILDCARD, type ToolDisplayConfig } from "./types.js";
 
+interface DiffColorPreset {
+	id: string;
+	colors: Pick<
+		ToolDisplayConfig,
+		"diffAddedBg" | "diffRemovedBg" | "diffAddedEmphasisBg" | "diffRemovedEmphasisBg"
+	>;
+}
+
+/** Named row-background palettes for the cycling modal selector; "theme" keeps derived mixes. */
+const DIFF_COLOR_PRESETS: readonly DiffColorPreset[] = [
+	{ id: "theme", colors: { diffAddedBg: undefined, diffRemovedBg: undefined, diffAddedEmphasisBg: undefined, diffRemovedEmphasisBg: undefined } },
+	{ id: "github", colors: { diffAddedBg: "#14351f", diffRemovedBg: "#3a1d20", diffAddedEmphasisBg: "#1d5230", diffRemovedEmphasisBg: "#57262b" } },
+	{ id: "contrast", colors: { diffAddedBg: "#1d5230", diffRemovedBg: "#55242b", diffAddedEmphasisBg: "#27703f", diffRemovedEmphasisBg: "#6e3038" } },
+];
+
+function describeDiffColorSelection(config: ToolDisplayConfig): string {
+	const colorKeys = [
+		"diffAddedBg",
+		"diffRemovedBg",
+		"diffAddedEmphasisBg",
+		"diffRemovedEmphasisBg",
+	] as const;
+	for (const preset of DIFF_COLOR_PRESETS) {
+		if (colorKeys.every((key) => config[key] === preset.colors[key])) {
+			return preset.id;
+		}
+	}
+	return "custom";
+}
+
 function isDecorateAllToolsEnabled(config: ToolDisplayConfig): boolean {
 	return config.customToolOverrides[CUSTOM_TOOL_OVERRIDE_WILDCARD]?.enabled === true;
 }
@@ -67,6 +97,8 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`diff=${config.diffViewMode}/${config.diffIndicatorMode}@${config.diffSplitMinWidth}`,
 		`diffLines=${config.diffCollapsedLines}`,
 		`diffWrap=${toOnOff(config.diffWordWrap)}`,
+		`diffHl=${config.diffSyntaxHighlighting}`,
+		`diffColors=${describeDiffColorSelection(config)}`,
 	];
 
 	if (capabilities.hasMcpTooling) {
@@ -121,7 +153,7 @@ function buildAdvancedNotes(
 ): string[] {
 	const notes = [
 		...extra,
-		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, diffWordWrap, and shikiCodeBlockTheme.",
+		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, diffWordWrap, diffAddedBg, diffRemovedBg, diffAddedEmphasisBg, diffRemovedEmphasisBg, and shikiCodeBlockTheme.",
 		`Tool ownership is currently ${toolOwnershipSummary(config)} and still applies after /reload.`,
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
@@ -412,6 +444,48 @@ function buildInspectorSettings(
 			searchTerms: ["diff", "indicator", "bars", "classic", "none", "marker"],
 		},
 		{
+			id: "diffSyntaxHighlighting",
+			label: "Diff syntax highlighting",
+			currentValue: config.diffSyntaxHighlighting,
+			values: ["shiki", "basic", "off"],
+			inspectorTitle: "Diff Syntax Highlighting",
+			inspectorSummary: [
+				"Controls code coloring inside edit and write diff rows.",
+				"Shiki highlights each hunk as a whole block, so multi-line strings, comments, and JSX keep their colors; basic uses Pi's per-line highlighter, which loses cross-line context.",
+			],
+			inspectorOptions: [
+				"shiki — TextMate-grammar highlighting per hunk block (recommended)",
+				"basic — Pi's per-line highlighter",
+				"off — no syntax colors in diff rows",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Shiki diff highlighting falls back to basic per-line colors for languages outside the bundled grammar set.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["diff", "syntax", "highlight", "shiki", "code", "color"],
+		},
+		{
+			id: "diffColors",
+			label: "Diff row colors",
+			currentValue: describeDiffColorSelection(config),
+			values: DIFF_COLOR_PRESETS.map((preset) => preset.id),
+			inspectorTitle: "Diff Row Colors",
+			inspectorSummary: [
+				"Chooses the background tint applied to changed diff lines.",
+				"theme derives tints from the active Pi theme (stronger green for added lines, subtle red for removed lines); fixed presets pin explicit hex colors instead.",
+			],
+			inspectorOptions: [
+				"theme — theme-derived tints, adapts to light/dark (recommended)",
+				"github — GitHub-dark style fixed tints",
+				"contrast — maximum-separation fixed tints",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Custom hex colors can be set via config.json keys diffAddedBg, diffRemovedBg, diffAddedEmphasisBg, and diffRemovedEmphasisBg; the modal reports such states as custom.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["diff", "color", "background", "tint", "green", "red", "contrast"],
+		},
+		{
 			id: "allowExternalDiffPreviews",
 			label: "External diff previews",
 			currentValue: toOnOff(config.allowExternalDiffPreviews),
@@ -499,7 +573,17 @@ function buildInspectorSettings(
 function applyPreset(preset: ToolDisplayPreset, currentConfig?: ToolDisplayConfig): ToolDisplayConfig {
 	const presetConfig = getToolDisplayPresetConfig(preset);
 	return currentConfig
-		? { ...presetConfig, debug: currentConfig.debug, enabled: currentConfig.enabled }
+		? {
+			...presetConfig,
+			debug: currentConfig.debug,
+			enabled: currentConfig.enabled,
+			// Diff styling is user taste; presets must not wipe it.
+			diffAddedBg: currentConfig.diffAddedBg,
+			diffRemovedBg: currentConfig.diffRemovedBg,
+			diffAddedEmphasisBg: currentConfig.diffAddedEmphasisBg,
+			diffRemovedEmphasisBg: currentConfig.diffRemovedEmphasisBg,
+			diffSyntaxHighlighting: currentConfig.diffSyntaxHighlighting,
+		}
 		: presetConfig;
 }
 
@@ -589,6 +673,18 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 				...config,
 				diffIndicatorMode: value as ToolDisplayConfig["diffIndicatorMode"],
 			};
+		case "diffSyntaxHighlighting":
+			return {
+				...config,
+				diffSyntaxHighlighting: value as ToolDisplayConfig["diffSyntaxHighlighting"],
+			};
+		case "diffColors": {
+			const preset = DIFF_COLOR_PRESETS.find((candidate) => candidate.id === value);
+			if (!preset) {
+				return config;
+			}
+			return { ...config, ...preset.colors };
+		}
 		case "allowExternalDiffPreviews":
 			return {
 				...config,

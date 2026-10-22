@@ -329,8 +329,9 @@ Effective configuration is merged as defaults → global config → project conf
 | `diffWordWrap` | boolean | `true` | Wrap long diff lines when needed |
 | `diffAddedBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for added diff rows; invalid values fall back to the theme-derived color |
 | `diffRemovedBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for removed diff rows |
-| `diffAddedEmphasisBg` | string | *(row color)* | Explicit `#RRGGBB` background for emphasized added spans |
-| `diffRemovedEmphasisBg` | string | *(row color)* | Explicit `#RRGGBB` background for emphasized removed spans |
+| `diffAddedEmphasisBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for emphasized added spans; theme-derived when unset |
+| `diffRemovedEmphasisBg` | string | *(theme mix)* | Explicit `#RRGGBB` background for emphasized removed spans; theme-derived when unset |
+| `diffSyntaxHighlighting` | string | `"shiki"` | Code coloring inside edit/write diffs: `shiki` (block-level TextMate highlighting), `basic` (pi's per-line highlighter), or `off` |
 | `allowExternalDiffPreviews` | boolean | `false` | Allow pending edit/write diff previews for target paths outside workspace |
 | `showTruncationHints` | boolean | `false` | Show truncation indicators for compacted output |
 | `showRtkCompactionHints` | boolean | `false` | Show RTK compaction hints when RTK metadata exists |
@@ -449,8 +450,11 @@ Notes:
   "diffSplitMinWidth": 120,
   "diffCollapsedLines": 24,
   "diffWordWrap": true,
-  "diffAddedBg": "#1a2f1a",
-  "diffRemovedBg": "#3a1a1a",
+  "diffAddedBg": "#14351f",
+  "diffRemovedBg": "#3a1d20",
+  "diffAddedEmphasisBg": "#1d5230",
+  "diffRemovedEmphasisBg": "#57262b",
+  "diffSyntaxHighlighting": "shiki",
   "allowExternalDiffPreviews": false,
   "showTruncationHints": false,
   "showRtkCompactionHints": false

@@ -2,6 +2,7 @@ import {
 	Markdown,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { createHighlighterCoreSync, type HighlighterCore, type ThemedToken } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
@@ -297,6 +298,73 @@ function renderFallbackHighlightedLines(
 	return code.split("\n").map((line) => theme.codeBlock(line));
 }
 
+export type ShikiDiffBlockHighlighter = (code: string) => string[] | undefined;
+
+const DIFF_BLOCK_MAX_CHARS = 24000;
+const DIFF_HIGHLIGHT_CACHE_LIMIT = 128;
+const diffBlockHighlightCache = new Map<string, string[] | undefined>();
+
+function styleDiffToken(token: ThemedToken): string {
+	const color = ansiColor(token.color);
+	const italic = ((token.fontStyle ?? 0) & FONT_STYLE_ITALIC) !== 0;
+	const prefix = `${color}${italic ? "\x1b[3m" : ""}`;
+	if (!prefix) {
+		return token.content;
+	}
+	// Foreground-only resets (39/23) keep diff row backgrounds and the context-row
+	// dim alive. Bold is dropped deliberately: SGR 22 would clear the dim.
+	return `${prefix}${token.content}\x1b[39m${italic ? "\x1b[23m" : ""}`;
+}
+
+/**
+ * Block-level Shiki highlighter for edit/write diffs. The whole block is
+ * highlighted at once so multi-line grammar state (template literals, block
+ * comments, JSX) is preserved, unlike per-line cli-highlight. Returns per-line
+ * ANSI strings, or undefined when Shiki cannot handle the block (unknown
+ * language, oversized input) so the caller can fall back.
+ */
+export function createShikiDiffBlockHighlighter(
+	rawLanguage: string | undefined,
+	config: ToolDisplayConfig,
+): ShikiDiffBlockHighlighter | undefined {
+	const lang = normalizeLanguage(rawLanguage);
+	if (!lang || config.diffSyntaxHighlighting !== "shiki") {
+		return undefined;
+	}
+	const shikiTheme = getShikiTheme(config);
+
+	return (code: string): string[] | undefined => {
+		if (!code) {
+			return undefined;
+		}
+		const cacheKey = `${shikiTheme}\0${lang}\0${code}`;
+		if (diffBlockHighlightCache.has(cacheKey)) {
+			return diffBlockHighlightCache.get(cacheKey);
+		}
+
+		let result: string[] | undefined;
+		const shiki = getHighlighter();
+		if (shiki && code.length <= DIFF_BLOCK_MAX_CHARS) {
+			try {
+				const resolvedLang = shiki.resolveLangAlias(lang);
+				const tokens = shiki.codeToTokensBase(code, {
+					lang: resolvedLang,
+					theme: shikiTheme,
+				});
+				result = tokens.map((lineTokens) => lineTokens.map(styleDiffToken).join(""));
+			} catch {
+				result = undefined;
+			}
+		}
+
+		if (diffBlockHighlightCache.size >= DIFF_HIGHLIGHT_CACHE_LIMIT) {
+			diffBlockHighlightCache.clear();
+		}
+		diffBlockHighlightCache.set(cacheKey, result);
+		return result;
+	};
+}
+
 function renderHighlightedLines(
 	code: string,
 	lang: string | undefined,
@@ -316,10 +384,13 @@ function buildBorderLine(
 ): string {
 	const safeWidth = Math.max(2, Math.floor(width));
 	const cleanLabel = label?.trim();
-	const labelText = cleanLabel ? ` ${cleanLabel} ` : "";
+	// Reserve room for both corners plus one space of padding around the label so
+	// the right corner (╮/╯) always survives, even with long language tags.
+	const maxLabelWidth = Math.max(0, safeWidth - 4);
+	const fittedLabel = cleanLabel ? truncateToWidth(cleanLabel, maxLabelWidth, "…") : "";
+	const labelText = fittedLabel ? ` ${fittedLabel} ` : "";
 	const availableFillWidth = Math.max(0, safeWidth - 2 - visibleWidth(labelText));
-	const line = `${left}${labelText}${"─".repeat(availableFillWidth)}${right}`;
-	return theme.codeBlockBorder(truncateToWidth(line, safeWidth, ""));
+	return theme.codeBlockBorder(`${left}${labelText}${"─".repeat(availableFillWidth)}${right}`);
 }
 
 function renderFormattedCodeBlock(
@@ -328,13 +399,24 @@ function renderFormattedCodeBlock(
 	width: number,
 	theme: MarkdownThemeLike,
 ): string[] {
-	const contentWidth = Math.max(1, width - 2);
+	// Layout: │ <code padded to codeArea> │  → the right border is always drawn.
+	const codeArea = Math.max(1, Math.floor(width) - 4);
+	const rows: string[] = [];
+	for (const line of lines) {
+		const visualRows = visibleWidth(line) <= codeArea
+			? [line]
+			: wrapTextWithAnsi(line, codeArea);
+		for (const visualRow of visualRows) {
+			const padding = Math.max(0, codeArea - visibleWidth(visualRow));
+			rows.push(`${theme.codeBlockBorder("│")} ${visualRow}${" ".repeat(padding)} ${theme.codeBlockBorder("│")}`);
+		}
+	}
+	if (rows.length === 0) {
+		rows.push(`${theme.codeBlockBorder("│")}${" ".repeat(codeArea + 2)}${theme.codeBlockBorder("│")}`);
+	}
 	return [
 		buildBorderLine("╭", "╮", width, theme, languageLabel),
-		...lines.map((line) => {
-			const visiblePadding = Math.max(0, contentWidth - visibleWidth(line));
-			return `${theme.codeBlockBorder("│")} ${line}${" ".repeat(visiblePadding)}`;
-		}),
+		...rows,
 		buildBorderLine("╰", "╯", width, theme),
 	];
 }

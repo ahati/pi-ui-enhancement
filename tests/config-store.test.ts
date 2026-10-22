@@ -278,3 +278,13 @@ test("bash intent keys survive a save/load round trip", () => {
     assert.equal(loaded.config.bashIntentShowCommand, true);
   });
 });
+
+test("diffSyntaxHighlighting normalizes modes and legacy booleans", () => {
+  assert.equal(normalizeToolDisplayConfig({}).diffSyntaxHighlighting, "shiki");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: "off" }).diffSyntaxHighlighting, "off");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: "basic" }).diffSyntaxHighlighting, "basic");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: "shiki" }).diffSyntaxHighlighting, "shiki");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: "wat" }).diffSyntaxHighlighting, "shiki");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: false }).diffSyntaxHighlighting, "off");
+  assert.equal(normalizeToolDisplayConfig({ diffSyntaxHighlighting: true }).diffSyntaxHighlighting, "basic");
+});

@@ -24,9 +24,9 @@ interface RgbColor {
 
 const ADDITION_TINT_TARGET: RgbColor = { r: 84, g: 190, b: 118 };
 const DELETION_TINT_TARGET: RgbColor = { r: 232, g: 95, b: 122 };
-const ADD_ROW_BACKGROUND_MIX_RATIO = 0.12;
+const ADD_ROW_BACKGROUND_MIX_RATIO = 0.24;
 const REMOVE_ROW_BACKGROUND_MIX_RATIO = 0.12;
-const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.26;
+const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.44;
 
 function mixRgb(base: RgbColor, tint: RgbColor, ratio: number): RgbColor {
 	const clamped = Math.max(0, Math.min(1, ratio));

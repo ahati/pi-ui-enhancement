@@ -9,6 +9,7 @@ export const BASH_OUTPUT_MODES = ["opencode", "summary", "preview"] as const;
 export const BASH_INTENT_MODES = ["off", "render", "render-and-instruct"] as const;
 export const DIFF_VIEW_MODES = ["auto", "split", "unified"] as const;
 export const DIFF_INDICATOR_MODES = ["bars", "classic", "none"] as const;
+export const DIFF_SYNTAX_HIGHLIGHTING_MODES = ["shiki", "basic", "off"] as const;
 export const SHIKI_CODE_BLOCK_THEMES = [
 	"github-dark",
 	"github-light",
@@ -30,6 +31,7 @@ export type BashOutputMode = (typeof BASH_OUTPUT_MODES)[number];
 export type BashIntentMode = (typeof BASH_INTENT_MODES)[number];
 export type DiffViewMode = (typeof DIFF_VIEW_MODES)[number];
 export type DiffIndicatorMode = (typeof DIFF_INDICATOR_MODES)[number];
+export type DiffSyntaxHighlightingMode = (typeof DIFF_SYNTAX_HIGHLIGHTING_MODES)[number];
 export type ShikiCodeBlockTheme = (typeof SHIKI_CODE_BLOCK_THEMES)[number];
 
 export const BUILT_IN_TOOL_OVERRIDE_NAMES = [
@@ -93,6 +95,8 @@ export interface ToolDisplayConfig {
 	diffRemovedBg?: string;
 	diffAddedEmphasisBg?: string;
 	diffRemovedEmphasisBg?: string;
+	/** Code coloring inside edit/write diffs: bundled Shiki (block-level), pi's basic per-line highlighter, or none. */
+	diffSyntaxHighlighting: DiffSyntaxHighlightingMode;
 	allowExternalDiffPreviews: boolean;
 	showTruncationHints: boolean;
 	showRtkCompactionHints: boolean;
@@ -118,6 +122,11 @@ export const TOOL_DISPLAY_SCALAR_CONFIG_KEYS = [
 	"diffSplitMinWidth",
 	"diffCollapsedLines",
 	"diffWordWrap",
+	"diffAddedBg",
+	"diffRemovedBg",
+	"diffAddedEmphasisBg",
+	"diffRemovedEmphasisBg",
+	"diffSyntaxHighlighting",
 	"allowExternalDiffPreviews",
 	"showTruncationHints",
 	"showRtkCompactionHints",
@@ -127,6 +136,11 @@ export type ToolDisplayScalarConfigKey = (typeof TOOL_DISPLAY_SCALAR_CONFIG_KEYS
 
 export const TOOL_DISPLAY_PRESET_IGNORED_CONFIG_KEYS = [
 	"debug",
+	// Colors are user taste; applying a preset must not wipe them.
+	"diffAddedBg",
+	"diffRemovedBg",
+	"diffAddedEmphasisBg",
+	"diffRemovedEmphasisBg",
 ] as const satisfies ReadonlyArray<ToolDisplayScalarConfigKey>;
 
 export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
@@ -169,6 +183,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	diffRemovedBg: undefined,
 	diffAddedEmphasisBg: undefined,
 	diffRemovedEmphasisBg: undefined,
+	diffSyntaxHighlighting: "shiki",
 	allowExternalDiffPreviews: false,
 	showTruncationHints: false,
 	showRtkCompactionHints: false,
