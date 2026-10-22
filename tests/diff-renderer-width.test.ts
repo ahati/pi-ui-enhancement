@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Box, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { buildDiffSummaryText, resolveDiffPresentationMode } from "../src/diff-presentation.ts";
-import { renderEditDiffResult, renderWriteDiffResult } from "../src/diff-renderer.ts";
+import {
+	renderEditDiffResult,
+	renderWriteDiffResult,
+	ADDITION_TINT_TARGET,
+	DELETION_TINT_TARGET,
+	ADD_ROW_BACKGROUND_MIX_RATIO,
+	REMOVE_ROW_BACKGROUND_MIX_RATIO,
+	ADD_INLINE_EMPHASIS_MIX_RATIO,
+} from "../src/diff-renderer.ts";
 
 const diffConfig = {
 	diffViewMode: "auto" as const,
@@ -22,11 +30,6 @@ interface RgbColor {
 	b: number;
 }
 
-const ADDITION_TINT_TARGET: RgbColor = { r: 84, g: 190, b: 118 };
-const DELETION_TINT_TARGET: RgbColor = { r: 232, g: 95, b: 122 };
-const ADD_ROW_BACKGROUND_MIX_RATIO = 0.24;
-const REMOVE_ROW_BACKGROUND_MIX_RATIO = 0.12;
-const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.44;
 
 function mixRgb(base: RgbColor, tint: RgbColor, ratio: number): RgbColor {
 	const clamped = Math.max(0, Math.min(1, ratio));
