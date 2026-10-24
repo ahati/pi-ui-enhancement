@@ -1,6 +1,6 @@
 {
   "name": "pi-ui-enhancement",
-  "version": "2026.10.24-r1",
+  "version": "2026.10.24-r2",
   "description": "Compact tool call rendering, diff visualization, Shiki code blocks, codemode diffs, and output truncation for the Pi coding agent. Successor to pi-tool-display.",
   "type": "module",
   "main": "./index.ts",
