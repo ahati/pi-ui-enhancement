@@ -49,4 +49,8 @@ jobs:
         run: npm run check
 
       - name: Publish
-        run: npm publish --provenance --access public
+        # --tag latest is explicit because date-based versions parse as semver
+        # prereleases (2026.10.24-r1), and npm refuses to default a prerelease
+        # to the latest dist-tag without it. These are primary releases, so
+        # latest is correct.
+        run: npm publish --provenance --access public --tag latest
