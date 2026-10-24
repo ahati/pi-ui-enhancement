@@ -112,14 +112,13 @@ const SPLIT_SEPARATOR = " │ ";
 const MIN_LINE_NUMBER_WIDTH = 2;
 const MIN_SPLIT_COLUMN_WIDTH = 24;
 const MAX_INLINE_DIFF_LINE_LENGTH = 700;
-// Row tints are symmetric: an asymmetric pair made removals far dimmer than
-// additions, so a removed line could read as context. Exported so the renderer
-// tests derive expectations from the implementation instead of duplicating
-// magic numbers.
-export const ADD_ROW_BACKGROUND_MIX_RATIO = 0.42;
-export const REMOVE_ROW_BACKGROUND_MIX_RATIO = 0.42;
-export const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.64;
-export const REMOVE_INLINE_EMPHASIS_MIX_RATIO = 0.64;
+// Restored to the original (pre-cc-tools) tint strengths; exported so the
+// renderer tests derive expectations from the implementation instead of
+// duplicating magic numbers.
+export const ADD_ROW_BACKGROUND_MIX_RATIO = 0.12;
+export const REMOVE_ROW_BACKGROUND_MIX_RATIO = 0.12;
+export const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.26;
+export const REMOVE_INLINE_EMPHASIS_MIX_RATIO = 0.26;
 export const ADDITION_TINT_TARGET: RgbColor = { r: 84, g: 190, b: 118 };
 export const DELETION_TINT_TARGET: RgbColor = { r: 232, g: 95, b: 122 };
 const ANSI_BG_RESET = "\x1b[49m";
@@ -1253,11 +1252,8 @@ function readThemeAnsi(theme: DiffTheme, kind: "fg" | "bg", slot: string): strin
 }
 
 function resolveContainerBackgroundAnsi(theme: DiffTheme): string | undefined {
-	// Neutral first, for the same reason as the row base: a green success tint
-	// behind red rows fights the diff colors. Custom themes that only define
-	// toolSuccessBg still fall back to it.
-	return readThemeAnsi(theme, "bg", "toolPendingBg")
-		?? readThemeAnsi(theme, "bg", "toolSuccessBg")
+	return readThemeAnsi(theme, "bg", "toolSuccessBg")
+		?? readThemeAnsi(theme, "bg", "toolPendingBg")
 		?? readThemeAnsi(theme, "bg", "toolErrorBg")
 		?? readThemeAnsi(theme, "bg", "userMessageBg");
 }
@@ -1274,13 +1270,10 @@ function hexToBgAnsi(color: string | undefined): string | undefined {
 }
 
 function resolveDiffPalette(theme: DiffTheme, config?: ToolDisplayConfig): DiffPalette {
-	// The row base must be NEUTRAL. Using toolSuccessBg (a saturated green in both
-	// bundled themes) as the base made added and removed rows nearly the same
-	// teal, because a red tint mixed into a green base only desaturates it.
-	// toolPendingBg is the neutral tool surface in the bundled themes; the
-	// remaining slots keep custom themes working.
-	const baseBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolPendingBg"))
-		?? parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolSuccessBg"))
+	// Restored original base slot: toolSuccessBg (green in bundled themes),
+	// falling back to toolPendingBg and the remaining slots for custom themes.
+	const baseBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolSuccessBg"))
+		?? parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolPendingBg"))
 		?? parseAnsiColorCode(readThemeAnsi(theme, "bg", "userMessageBg"))
 		?? { r: 32, g: 35, b: 42 };
 	const addFg = parseAnsiColorCode(readThemeAnsi(theme, "fg", "toolDiffAdded")) ?? { r: 88, g: 173, b: 88 };
