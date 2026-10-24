@@ -57,10 +57,17 @@ function createApiStub(
   capturedTools: ToolLike[];
   capturedCommands: CapturedCommand[];
   capturedHandlers: CapturedHandler[];
+  capturedRendererResolvers: Array<(
+    toolName: string,
+    next: () => unknown,
+  ) => unknown>;
 } {
   const capturedTools: ToolLike[] = [];
   const capturedCommands: CapturedCommand[] = [];
   const capturedHandlers: CapturedHandler[] = [];
+  const capturedRendererResolvers: Array<
+    (toolName: string, next: () => unknown) => unknown
+  > = [];
 
   const api = {
     registerTool(tool: unknown): void {
@@ -70,6 +77,9 @@ function createApiStub(
     registerCommand(name: string, cmd: unknown): void {
       capturedCommands.push({ name, ...(cmd as object) } as CapturedCommand);
       overrides.registerCommand?.(name, cmd);
+    },
+    registerToolRenderer(resolver: (toolName: string, next: () => unknown) => unknown): void {
+      capturedRendererResolvers.push(resolver);
     },
     on(event: string, handler: (...args: unknown[]) => unknown): void {
       capturedHandlers.push({ event, handler });
@@ -83,7 +93,30 @@ function createApiStub(
     },
   } as unknown as ExtensionAPI;
 
-  return { api, capturedTools, capturedCommands, capturedHandlers };
+  return { api, capturedTools, capturedCommands, capturedHandlers, capturedRendererResolvers };
+}
+
+const BUILT_IN_TOOL_NAMES = ["bash", "edit", "find", "grep", "ls", "read", "write"] as const;
+
+/** Resolve the built-in renderers the chain would use, in resolver order. */
+function resolveBuiltInRenderers(
+  resolvers: Array<(toolName: string, next: () => unknown) => unknown>,
+): Map<string, { renderCall?: unknown; renderResult?: unknown; renderShell?: unknown }> {
+  const resolved = new Map<
+    string,
+    { renderCall?: unknown; renderResult?: unknown; renderShell?: unknown }
+  >();
+  for (const name of BUILT_IN_TOOL_NAMES) {
+    let entry: unknown;
+    for (const resolver of resolvers) {
+      const applied = resolver(name, () => entry);
+      if (applied) entry = applied;
+    }
+    if (entry) {
+      resolved.set(name, entry as { renderCall?: unknown; renderResult?: unknown });
+    }
+  }
+  return resolved;
 }
 
 /**
@@ -94,12 +127,17 @@ function createExtensionApiStub(allTools: unknown[] = []): {
   api: ExtensionAPI;
   registeredTools: ToolLike[];
   eventHandlers: Record<string, () => Promise<void> | void>;
+  rendererResolvers: Array<(toolName: string, next: () => unknown) => unknown>;
 } {
   const registeredTools: ToolLike[] = [];
   const eventHandlers: Record<string, () => Promise<void> | void> = {};
+  const rendererResolvers: Array<(toolName: string, next: () => unknown) => unknown> = [];
   const api = {
     registerTool(tool: ToolLike): void {
       registeredTools.push(tool);
+    },
+    registerToolRenderer(resolver: (toolName: string, next: () => unknown) => unknown): void {
+      rendererResolvers.push(resolver);
     },
     on(event: string, handler: () => Promise<void> | void): void {
       eventHandlers[event] = handler;
@@ -109,7 +147,7 @@ function createExtensionApiStub(allTools: unknown[] = []): {
     },
   } as unknown as ExtensionAPI;
 
-  return { api, registeredTools, eventHandlers };
+  return { api, registeredTools, eventHandlers, rendererResolvers };
 }
 
 function withTempDir(name: string, run: (dir: string) => void): void {
@@ -155,107 +193,80 @@ test("1: after reload, new lifecycle handlers are registered", () => {
 // 2. Tool override restoration
 // ---------------------------------------------------------------------------
 
-test("2: built-in tool overrides are re-registered on reload", async () => {
-  const { api, capturedTools, capturedHandlers } = createApiStub();
+test("2: built-in tool renderers are re-applied on reload without registering tools", async () => {
+  const { api, capturedTools, capturedHandlers, capturedRendererResolvers } = createApiStub();
 
-  // First call — tools register only after session_start.
+  const builtInRegistrations = () =>
+    capturedTools.filter((t) => BUILT_IN_TOOL_NAMES.includes(t.name as never)).length;
+
+  // First call — built-ins are never registered; they render via the chain.
   toolDisplayExtension(api);
-  assert.equal(
-    capturedTools.filter((t) => ["find", "ls", "write", "bash"].includes(t.name)).length,
-    0,
-    "built-ins are deferred until session lifecycle",
-  );
+  assert.equal(builtInRegistrations(), 0, "built-ins are never registered (renderer chain only)");
   for (const { event, handler } of capturedHandlers) {
     if (event === "session_start") {
       await handler({}, { cwd: process.cwd(), isProjectTrusted: () => false, ui: { notify: () => {}, theme: {} } });
     }
   }
-  const firstTools = capturedTools.map((t) => t.name);
-  assert.ok(firstTools.includes("find"), "find registered after session_start");
+  const firstResolution = resolveBuiltInRenderers(capturedRendererResolvers);
+  assert.ok(firstResolution.get("bash")?.renderCall, "bash renders through the chain after load");
 
   // Simulate reload + lifecycle
-  const countBeforeReload = capturedTools.length;
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) {
     if (event === "session_start") {
       await handler({}, { cwd: process.cwd(), isProjectTrusted: () => false, ui: { notify: () => {}, theme: {} } });
     }
   }
-  const countAfterReload = capturedTools.length;
-  assert.ok(
-    countAfterReload >= countBeforeReload + 3,
-    "built-in tools re-registered on reload after lifecycle",
-  );
+  assert.equal(builtInRegistrations(), 0, "reload still registers no built-in tools");
 
-  const toolNameCounts = new Map<string, number>();
-  for (const tool of capturedTools) {
-    toolNameCounts.set(tool.name, (toolNameCounts.get(tool.name) ?? 0) + 1);
-  }
-  for (const name of ["bash", "edit", "find", "grep", "ls", "read", "write"] as const) {
-    assert.ok(
-      (toolNameCounts.get(name) ?? 0) >= 2,
-      `${name} is registered at least twice (two calls)`,
-    );
+  const afterReload = resolveBuiltInRenderers(capturedRendererResolvers);
+  for (const name of BUILT_IN_TOOL_NAMES) {
+    const entry = afterReload.get(name);
+    assert.ok(entry?.renderCall && entry?.renderResult, `${name} renders through the chain after reload`);
   }
 });
 
-test("2: re-registered tools have renderCall and renderResult functions after reload", () => {
-  const { api, capturedTools } = createApiStub();
+test("2: renderers resolved after reload have renderCall and renderResult functions", () => {
+  const { api, capturedRendererResolvers } = createApiStub();
 
   toolDisplayExtension(api);
   toolDisplayExtension(api);
 
-  // Collect tools registered in the SECOND call only
-  const allTools = capturedTools;
-  const midPoint = Math.floor(allTools.length / 2);
-  const secondCallTools = allTools.slice(midPoint);
-
-  if (secondCallTools.length > 0) {
-    for (const tool of secondCallTools) {
-      assert.ok(
-        typeof tool.renderCall === "function",
-        `${tool.name} from reload has renderCall`,
-      );
-      assert.ok(
-        typeof tool.renderResult === "function",
-        `${tool.name} from reload has renderResult`,
-      );
-    }
+  const resolved = resolveBuiltInRenderers(capturedRendererResolvers);
+  for (const name of BUILT_IN_TOOL_NAMES) {
+    const entry = resolved.get(name);
+    assert.ok(entry, `${name} resolves after reload`);
+    assert.ok(typeof entry.renderCall === "function", `${name} from reload has renderCall`);
+    assert.ok(typeof entry.renderResult === "function", `${name} from reload has renderResult`);
   }
 });
 
-test("2: built-in tool overrides register on lifecycle events and re-register on reload", async () => {
-  const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+test("2: built-in renderers resolve immediately and survive reload without registering", async () => {
+  const { api, registeredTools, eventHandlers, rendererResolvers } = createExtensionApiStub();
   const expectedBuiltIns = ["bash", "edit", "find", "grep", "ls", "read", "write"];
 
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  assert.equal(registeredTools.length, 0, "no built-ins registered before lifecycle events");
+  assert.equal(registeredTools.length, 0, "no built-ins are registered (renderer chain only)");
 
-  await eventHandlers.before_agent_start?.();
-  const firstLifecycle = registeredTools.map((t) => t.name);
-  for (const toolName of ["read", "edit", "grep", "bash", "find", "ls", "write"] as const) {
-    assert.ok(firstLifecycle.includes(toolName), `${toolName} registered on before_agent_start`);
+  // Renderers are available without any lifecycle event.
+  const resolved = resolveBuiltInRenderers(rendererResolvers);
+  for (const toolName of expectedBuiltIns) {
+    const entry = resolved.get(toolName);
+    assert.ok(entry, `${toolName} resolves without any lifecycle event`);
+    assert.ok(entry.renderCall && entry.renderResult, `${toolName} has renderCall and renderResult`);
   }
-  const countAfterLifecycle = registeredTools.length;
 
   await eventHandlers.before_agent_start?.();
-  assert.equal(
-    registeredTools.length,
-    countAfterLifecycle,
-    "before_agent_start does not duplicate already registered built-ins",
-  );
+  assert.equal(registeredTools.length, 0, "lifecycle registers no built-ins");
 
   registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-  assert.equal(
-    registeredTools.length,
-    countAfterLifecycle,
-    "reload queues built-ins but does not register them until lifecycle",
-  );
   await eventHandlers.before_agent_start?.();
-  assert.ok(
-    registeredTools.length >= countAfterLifecycle + 7,
-    "built-in display overrides re-register on lifecycle after reload",
-  );
+  assert.equal(registeredTools.length, 0, "reload registers no built-ins");
+  const afterReload = resolveBuiltInRenderers(rendererResolvers);
+  for (const toolName of expectedBuiltIns) {
+    const entry = afterReload.get(toolName);
+    assert.ok(entry?.renderCall && entry?.renderResult, `${toolName} renders after reload`);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -731,7 +742,7 @@ test("8: session_start handler can be invoked after reload without errors", asyn
 // ---------------------------------------------------------------------------
 
 test("9: calling toolDisplayExtension three times (double reload) is safe", async () => {
-  const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
+  const { api, capturedTools, capturedCommands, capturedHandlers, capturedRendererResolvers } = createApiStub();
   const fireSessionStart = async (): Promise<void> => {
     for (const { event, handler } of capturedHandlers) {
       if (event === "session_start") {
@@ -755,8 +766,9 @@ test("9: calling toolDisplayExtension three times (double reload) is safe", asyn
   await fireSessionStart();
   const afterThird = { tools: capturedTools.length, cmds: capturedCommands.length };
 
-  // Each call adds more registrations after lifecycle (no deduplication in the stub)
-  assert.ok(afterThird.tools > afterSecond.tools, "tools registered on third call");
+  // Each call re-registers its renderer chain resolver (no tool registration
+  // happens at all since the renderer-only migration).
+  assert.ok(capturedRendererResolvers.length >= 3, "renderer chain resolver registered on every call");
   assert.ok(afterThird.cmds > afterSecond.cmds, "commands registered on third call");
 
   // Verify all tool registrations have renderCall/renderResult

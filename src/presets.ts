@@ -14,11 +14,11 @@ export type ToolDisplayPreset = (typeof TOOL_DISPLAY_PRESETS)[number];
 const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> = {
 	opencode: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		disableEnhancedToolRender: { ...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender },
 	},
 	balanced: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		disableEnhancedToolRender: { ...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender },
 		readOutputMode: "summary",
 		searchOutputMode: "count",
 		mcpOutputMode: "summary",
@@ -26,7 +26,7 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 	},
 	verbose: {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		disableEnhancedToolRender: { ...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender },
 		readOutputMode: "preview",
 		searchOutputMode: "preview",
 		mcpOutputMode: "preview",
@@ -37,15 +37,15 @@ const TOOL_DISPLAY_PRESET_CONFIGS: Record<ToolDisplayPreset, ToolDisplayConfig> 
 	},
 };
 
-function toolOverrideOwnershipEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
+function disableEnhancedToolRenderEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
-		a.registerToolOverrides.read === b.registerToolOverrides.read &&
-		a.registerToolOverrides.grep === b.registerToolOverrides.grep &&
-		a.registerToolOverrides.find === b.registerToolOverrides.find &&
-		a.registerToolOverrides.ls === b.registerToolOverrides.ls &&
-		a.registerToolOverrides.bash === b.registerToolOverrides.bash &&
-		a.registerToolOverrides.edit === b.registerToolOverrides.edit &&
-		a.registerToolOverrides.write === b.registerToolOverrides.write
+		a.disableEnhancedToolRender.read === b.disableEnhancedToolRender.read &&
+		a.disableEnhancedToolRender.grep === b.disableEnhancedToolRender.grep &&
+		a.disableEnhancedToolRender.find === b.disableEnhancedToolRender.find &&
+		a.disableEnhancedToolRender.ls === b.disableEnhancedToolRender.ls &&
+		a.disableEnhancedToolRender.bash === b.disableEnhancedToolRender.bash &&
+		a.disableEnhancedToolRender.edit === b.disableEnhancedToolRender.edit &&
+		a.disableEnhancedToolRender.write === b.disableEnhancedToolRender.write
 	);
 }
 
@@ -79,7 +79,7 @@ function scalarConfigEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean 
 
 function configsEqual(a: ToolDisplayConfig, b: ToolDisplayConfig): boolean {
 	return (
-		toolOverrideOwnershipEqual(a, b) &&
+		disableEnhancedToolRenderEqual(a, b) &&
 		customToolOverridesEqual(a, b) &&
 		scalarConfigEqual(a, b)
 	);
@@ -89,7 +89,7 @@ export function getToolDisplayPresetConfig(preset: ToolDisplayPreset): ToolDispl
 	const config = TOOL_DISPLAY_PRESET_CONFIGS[preset];
 	return {
 		...config,
-		registerToolOverrides: { ...config.registerToolOverrides },
+		disableEnhancedToolRender: { ...config.disableEnhancedToolRender },
 		customToolOverrides: cloneCustomToolOverrides(config.customToolOverrides),
 	};
 }

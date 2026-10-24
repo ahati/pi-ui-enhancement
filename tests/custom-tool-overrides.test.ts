@@ -45,9 +45,9 @@ function buildConfigWithCustomOverrides(
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
 		...overrides,
-		registerToolOverrides: {
-			...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides,
-			...overrides.registerToolOverrides,
+		disableEnhancedToolRender: {
+			...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender,
+			...overrides.disableEnhancedToolRender,
 		},
 		customToolOverrides,
 	} as ToolDisplayConfig;

@@ -72,9 +72,9 @@ function toOnOff(value: boolean): string {
 	return value ? "on" : "off";
 }
 
-function toolOwnershipSummary(config: ToolDisplayConfig): string {
-	const overrides = config.registerToolOverrides;
-	return `read:${toOnOff(overrides.read)},grep:${toOnOff(overrides.grep)},find:${toOnOff(overrides.find)},ls:${toOnOff(overrides.ls)},bash:${toOnOff(overrides.bash)},edit:${toOnOff(overrides.edit)},write:${toOnOff(overrides.write)}`;
+function toolRenderingSummary(config: ToolDisplayConfig): string {
+	const disabled = config.disableEnhancedToolRender;
+	return `read:${toOnOff(!disabled.read)},grep:${toOnOff(!disabled.grep)},find:${toOnOff(!disabled.find)},ls:${toOnOff(!disabled.ls)},bash:${toOnOff(!disabled.bash)},edit:${toOnOff(!disabled.edit)},write:${toOnOff(!disabled.write)}`;
 }
 
 function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCapabilities): string {
@@ -82,7 +82,7 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 	const parts = [
 		`enabled=${toOnOff(config.enabled)}`,
 		`preset=${preset}`,
-		`owners={${toolOwnershipSummary(config)}}`,
+		`render={${toolRenderingSummary(config)}}`,
 		`userBox=${toOnOff(config.enableNativeUserMessageBox)}`,
 		`shiki=${toOnOff(config.enableShikiCodeBlocks)}`,
 		`codeBox=${toOnOff(config.formatCodeBlocks)}`,
@@ -153,8 +153,8 @@ function buildAdvancedNotes(
 ): string[] {
 	const notes = [
 		...extra,
-		"Manual JSON edits also expose registerToolOverrides.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, diffWordWrap, diffAddedBg, diffRemovedBg, diffAddedEmphasisBg, diffRemovedEmphasisBg, and shikiCodeBlockTheme.",
-		`Tool ownership is currently ${toolOwnershipSummary(config)} and still applies after /reload.`,
+		"Manual JSON edits also expose disableEnhancedToolRender.*, expandedPreviewMaxLines, diffSplitMinWidth, diffCollapsedLines, diffIndicatorMode, diffWordWrap, diffAddedBg, diffRemovedBg, diffAddedEmphasisBg, diffRemovedEmphasisBg, and shikiCodeBlockTheme.",
+		`Enhanced tool rendering is currently ${toolRenderingSummary(config)} and still applies after /reload.`,
 		`Truncation hints are ${toOnOff(config.showTruncationHints)}${capabilities.hasRtkOptimizer ? `; RTK hints are ${toOnOff(config.showRtkCompactionHints)}.` : "."}`,
 	];
 	return notes;

@@ -37,10 +37,17 @@ function createApiStub(
   capturedTools: Array<{ name: string } & Record<string, unknown>>;
   capturedCommands: CapturedCommand[];
   capturedHandlers: CapturedHandler[];
+  capturedRendererResolvers: Array<(
+    toolName: string,
+    next: () => unknown,
+  ) => unknown>;
 } {
   const capturedTools: Array<{ name: string } & Record<string, unknown>> = [];
   const capturedCommands: CapturedCommand[] = [];
   const capturedHandlers: CapturedHandler[] = [];
+  const capturedRendererResolvers: Array<
+    (toolName: string, next: () => unknown) => unknown
+  > = [];
 
   const api = {
     registerTool(tool: unknown): void {
@@ -50,6 +57,9 @@ function createApiStub(
     registerCommand(name: string, cmd: unknown): void {
       capturedCommands.push({ name, ...(cmd as object) } as CapturedCommand);
       overrides.registerCommand?.(name, cmd);
+    },
+    registerToolRenderer(resolver: (toolName: string, next: () => unknown) => unknown): void {
+      capturedRendererResolvers.push(resolver);
     },
     on(event: string, handler: (...args: unknown[]) => unknown): void {
       capturedHandlers.push({ event, handler });
@@ -63,7 +73,7 @@ function createApiStub(
     },
   } as unknown as ExtensionAPI;
 
-  return { api, capturedTools, capturedCommands, capturedHandlers };
+  return { api, capturedTools, capturedCommands, capturedHandlers, capturedRendererResolvers };
 }
 
 function withTempDir(name: string, run: (dir: string) => void | Promise<void>): Promise<void> | void {
@@ -382,7 +392,7 @@ test("trusted project ownership config prevents built-in override registration",
   await withProjectConfigFixture(
     "pi-tool-display-index-project-ownership-",
     {
-      projectConfig: { registerToolOverrides: { find: false, ls: false, write: false } },
+      projectConfig: { disableEnhancedToolRender: { find: false, ls: false, write: false } },
       projectTrusted: true,
     },
     ({ capturedTools }) => {
@@ -394,13 +404,12 @@ test("trusted project ownership config prevents built-in override registration",
   );
 });
 
-test("entry point defers built-in tool overrides until the session lifecycle", async () => {
-  const { api, capturedTools, capturedHandlers } = createApiStub();
+test("entry point never registers built-in tools; rendering flows through the chain", async () => {
+  const { api, capturedTools, capturedHandlers, capturedRendererResolvers } = createApiStub();
   toolDisplayExtension(api);
 
-  // PR #34 (which supersedes PR #28's eager path): nothing is registered at
-  // load time, so another extension that owns a built-in (for example
-  // pi-patty-bg-tasks owning `bash`) can win cleanly.
+  // Nothing is registered at load time or after the lifecycle: built-ins are
+  // rendered exclusively through the Pi tool renderer chain.
   assert.deepEqual(capturedTools.map((t) => t.name), []);
 
   for (const { event, handler } of capturedHandlers) {
@@ -409,10 +418,20 @@ test("entry point defers built-in tool overrides until the session lifecycle", a
     }
   }
 
-  assert.deepEqual(
-    capturedTools.map((t) => t.name).sort(),
-    ["bash", "edit", "find", "grep", "ls", "read", "write"],
-  );
+  assert.deepEqual(capturedTools.map((t) => t.name), []);
+  assert.ok(capturedRendererResolvers.length >= 1, "renderer chain resolvers registered");
+
+  const resolved = new Map<string, unknown>();
+  for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"]) {
+    let entry: unknown;
+    const applied = capturedRendererResolvers[0](name, () => entry);
+    if (applied) entry = applied;
+    resolved.set(name, entry);
+  }
+  for (const [name, entry] of resolved) {
+    const renderers = entry as { renderCall?: unknown; renderResult?: unknown } | undefined;
+    assert.ok(renderers?.renderCall && renderers?.renderResult, `${name} renders through the chain`);
+  }
 });
 
 test("session_start handler refreshes capabilities and notifies pending errors", async () => {
@@ -445,7 +464,7 @@ test("before_agent_start handler refreshes capabilities without crashing", async
 });
 
 test("multiple calls to toolDisplayExtension are idempotent", async () => {
-  const { api, capturedTools, capturedCommands, capturedHandlers } = createApiStub();
+  const { api, capturedTools, capturedCommands, capturedHandlers, capturedRendererResolvers } = createApiStub();
 
   // Call twice
   toolDisplayExtension(api);
@@ -465,13 +484,15 @@ test("multiple calls to toolDisplayExtension are idempotent", async () => {
     }
   }
 
-  // Second call should not throw. Each generation registers its own lifecycle
-  // handlers (the loader deduplicates the extension), but the extension itself
-  // must not crash and built-ins must be registered.
+  // Second call should not throw. No built-in tool is registered anymore
+  // (renderer chain only), so nothing duplicates; the extension itself must
+  // not crash.
+  const builtInNames = ["read", "grep", "find", "ls", "bash", "edit", "write"];
   const toolNames = capturedTools.map((t) => t.name);
-  for (const name of ["find", "ls", "write"] as const) {
-    assert.ok(toolNames.filter((n) => n === name).length >= 1, `${name} registered at least once`);
+  for (const name of builtInNames) {
+    assert.equal(toolNames.includes(name), false, `${name} is never registered`);
   }
+  assert.ok(capturedRendererResolvers.length >= 2, "each call registers its renderer chain resolver");
 
   const cmdNames = capturedCommands.map((c) => c.name);
   assert.ok(cmdNames.filter((n) => n === "tool-display").length >= 1, "command registered at least once");
@@ -654,7 +675,7 @@ test("overridden tools include renderCall and renderResult functions", () => {
   }
 });
 
-test("overridden tools preserve promptSnippet and promptGuidelines from built-ins", async () => {
+test("built-in tools keep their native model-visible contract (no registration)", async () => {
   const { api, capturedTools, capturedHandlers } = createApiStub();
   toolDisplayExtension(api);
   for (const { event, handler } of capturedHandlers) {
@@ -667,15 +688,14 @@ test("overridden tools preserve promptSnippet and promptGuidelines from built-in
   assert.ok(sessionHandler, "session_start handler captured");
   await sessionHandler({}, { ui: { notify: () => {} } });
 
-  const byName = new Map(capturedTools.map((t) => [t.name, t]));
-
+  // Since the extension never registers built-ins, pi's own tool definitions
+  // (description, parameters, promptSnippet, promptGuidelines) reach the model
+  // untouched — there is nothing to preserve because nothing is replaced.
   for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool, `${name} is registered`);
-    // promptSnippet should be a non-empty string or undefined
-    // (built-in tools may or may not have promptSnippet)
-    if (tool.promptSnippet !== undefined) {
-      assert.equal(typeof tool.promptSnippet, "string");
-    }
+    assert.equal(
+      capturedTools.some((t) => t.name === name),
+      false,
+      `${name} is not re-registered, so its prompt contract is untouched`,
+    );
   }
 });

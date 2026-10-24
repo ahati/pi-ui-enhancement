@@ -27,7 +27,7 @@ export const BASH_INTENT_GUIDELINE = [
 	"Both are ordinary shell comments: the renderer strips them for display and they are never executed.",
 ].join("\n");
 
-type IntentConfig = Pick<ToolDisplayConfig, "bashIntentMode" | "registerToolOverrides">;
+type IntentConfig = Pick<ToolDisplayConfig, "bashIntentMode" | "disableEnhancedToolRender">;
 
 /** Wrapper programs that should not become the displayed program name. */
 const WRAPPER_COMMANDS = new Set(["sudo", "doas", "env", "nohup", "command", "exec", "time"]);
@@ -198,7 +198,7 @@ export function extractProgramName(command: string, depth = 1): string {
  * comment is inert and instructing the model would only add prompt noise.
  */
 export function shouldInstructBashIntent(config: IntentConfig): boolean {
-	return config.bashIntentMode === "render-and-instruct" && config.registerToolOverrides.bash;
+	return config.bashIntentMode === "render-and-instruct" && !config.disableEnhancedToolRender.bash;
 }
 
 /**

@@ -46,7 +46,8 @@ export const BUILT_IN_TOOL_OVERRIDE_NAMES = [
 
 export type BuiltInToolOverrideName = (typeof BUILT_IN_TOOL_OVERRIDE_NAMES)[number];
 
-export interface ToolOverrideOwnership {
+export interface DisableEnhancedToolRender {
+	/** true = disable tool-display rendering for this built-in (native rendering shows instead). */
 	read: boolean;
 	grep: boolean;
 	find: boolean;
@@ -55,6 +56,12 @@ export interface ToolOverrideOwnership {
 	edit: boolean;
 	write: boolean;
 }
+
+/**
+ * @deprecated Legacy ownership-flag shape (inverted semantics). Kept only for
+ * external consumers; the config now uses `DisableEnhancedToolRender`.
+ */
+export type ToolOverrideOwnership = DisableEnhancedToolRender;
 
 export interface CustomToolOverrideConfig {
 	enabled: boolean;
@@ -66,7 +73,7 @@ export interface CustomToolOverrideConfig {
 export interface ToolDisplayConfig {
 	enabled: boolean;
 	debug: boolean;
-	registerToolOverrides: ToolOverrideOwnership;
+	disableEnhancedToolRender: DisableEnhancedToolRender;
 	customToolOverrides: Record<string, CustomToolOverrideConfig>;
 	enableNativeUserMessageBox: boolean;
 	enableShikiCodeBlocks: boolean;
@@ -130,7 +137,7 @@ export const TOOL_DISPLAY_SCALAR_CONFIG_KEYS = [
 	"allowExternalDiffPreviews",
 	"showTruncationHints",
 	"showRtkCompactionHints",
-] as const satisfies ReadonlyArray<Exclude<keyof ToolDisplayConfig, "registerToolOverrides" | "customToolOverrides">>;
+] as const satisfies ReadonlyArray<Exclude<keyof ToolDisplayConfig, "disableEnhancedToolRender" | "customToolOverrides">>;
 
 export type ToolDisplayScalarConfigKey = (typeof TOOL_DISPLAY_SCALAR_CONFIG_KEYS)[number];
 
@@ -146,14 +153,15 @@ export const TOOL_DISPLAY_PRESET_IGNORED_CONFIG_KEYS = [
 export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	enabled: true,
 	debug: false,
-	registerToolOverrides: {
-		read: true,
-		grep: true,
-		find: true,
-		ls: true,
-		bash: true,
-		edit: true,
-		write: true,
+	disableEnhancedToolRender: {
+		/** Disable list: everything renders by default; `true` turns a tool's enhanced rendering off. */
+		read: false,
+		grep: false,
+		find: false,
+		ls: false,
+		bash: false,
+		edit: false,
+		write: false,
 	},
 	customToolOverrides: {
 		[CUSTOM_TOOL_OVERRIDE_WILDCARD]: { enabled: true, kind: "generic", outputMode: "summary" },

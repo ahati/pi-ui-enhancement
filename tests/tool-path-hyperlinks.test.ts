@@ -47,7 +47,17 @@ async function registerAndGetCallRenderers(): Promise<Map<string, NonNullable<Re
 		registerTool(tool: RegisteredToolLike): void {
 			registeredTools.push(tool);
 		},
-		registerToolRenderer(): void {},
+		registerToolRenderer(resolver: (toolName: string, next: () => unknown) => unknown): void {
+			// Built-ins render exclusively through the renderer chain now; resolve
+			// the call renderers eagerly for the assertions below.
+			for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"]) {
+				let entry: unknown;
+				const resolved = resolver(name, () => entry) as { renderCall?: RegisteredToolLike["renderCall"] } | undefined;
+				if (resolved && typeof resolved.renderCall === "function") {
+					registeredTools.push({ name, renderCall: resolved.renderCall });
+				}
+			}
+		},
 		registerCodeModeTool(): void {},
 		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
 			eventHandlers[event] = handler;

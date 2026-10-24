@@ -3,69 +3,22 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-	createBashTool,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createReadTool,
-	createWriteTool,
-	type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
-import { registerToolDisplayOverrides } from "../src/tool-overrides.ts";
-import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerToolDisplayOverrides, getWriteExecutionMeta, type WriteExecutionMeta } from "../src/tool-overrides.ts";
+import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
 const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
 const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
 
 interface RegisteredToolLike {
 	name: string;
-	description: string;
-	parameters: unknown;
-	renderShell?: "default" | "self";
-	promptSnippet?: string;
-	promptGuidelines?: string[];
 	renderCall?: (...args: unknown[]) => unknown;
 	renderResult?: (...args: unknown[]) => unknown;
+	renderShell?: unknown;
+	execute?: (...args: unknown[]) => unknown;
 }
 
-interface ToolEventHandlers {
-	session_start?: () => Promise<void> | void;
-	before_agent_start?: () => Promise<void> | void;
-}
-
-interface ExecutableToolLike extends RegisteredToolLike {
-	execute: (...args: unknown[]) => Promise<{ content?: Array<{ type: string; text?: string }> }>;
-}
-
-async function withTempDir(name: string, run: (dir: string) => Promise<void> | void): Promise<void> {
-	const dir = mkdtempSync(join(tmpdir(), name));
-	try {
-		await run(dir);
-	} finally {
-		rmSync(dir, { recursive: true, force: true });
-	}
-}
-
-function getTextOutput(result: { content?: Array<{ type: string; text?: string }> }): string {
-	return (result.content ?? [])
-		.filter((entry) => entry.type === "text")
-		.map((entry) => entry.text ?? "")
-		.join("");
-}
-
-function withDefaultReadEditOwners(tools: unknown[] = []): unknown[] {
-	const names = new Set(
-		tools
-			.map((tool) => (tool as { name?: unknown }).name)
-			.filter((name): name is string => typeof name === "string"),
-	);
-	const defaults = ["read", "edit"]
-		.filter((name) => !names.has(name))
-		.map((name) => ({ name, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } }));
-	return [...defaults, ...tools];
-}
+type EventHandler = (...args: unknown[]) => Promise<void> | void;
 
 interface ToolRendererChainEntryLike {
 	renderShell?: unknown;
@@ -78,14 +31,27 @@ type ToolRendererChainResolverLike = (
 	next: () => ToolRendererChainEntryLike | undefined,
 ) => ToolRendererChainEntryLike | undefined;
 
+const BUILT_IN_TOOL_NAMES = ["read", "grep", "find", "ls", "bash", "edit", "write"] as const;
+
+function buildConfig(overrides: Partial<ToolDisplayConfig>): ToolDisplayConfig {
+	return {
+		...DEFAULT_TOOL_DISPLAY_CONFIG,
+		...overrides,
+		disableEnhancedToolRender: {
+			...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender,
+			...overrides.disableEnhancedToolRender,
+		},
+	};
+}
+
 function createExtensionApiStub(allTools: unknown[] = []): {
 	api: ExtensionAPI;
 	registeredTools: RegisteredToolLike[];
-	eventHandlers: ToolEventHandlers;
+	eventHandlers: Record<string, EventHandler>;
 	rendererResolvers: ToolRendererChainResolverLike[];
 } {
 	const registeredTools: RegisteredToolLike[] = [];
-	const eventHandlers: ToolEventHandlers = {};
+	const eventHandlers: Record<string, EventHandler> = {};
 	const rendererResolvers: ToolRendererChainResolverLike[] = [];
 	const api = {
 		registerTool(tool: RegisteredToolLike): void {
@@ -94,220 +60,99 @@ function createExtensionApiStub(allTools: unknown[] = []): {
 		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
 			rendererResolvers.push(resolver);
 		},
-		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
+		on(event: string, handler: EventHandler): void {
 			eventHandlers[event] = handler;
 		},
 		getAllTools(): unknown[] {
-			return withDefaultReadEditOwners(allTools);
+			return allTools;
 		},
 	} as unknown as ExtensionAPI;
 
 	return { api, registeredTools, eventHandlers, rendererResolvers };
 }
 
-function createExtensionApiStubWithoutLoadTimeToolDiscovery(): {
-	api: ExtensionAPI;
-	registeredTools: RegisteredToolLike[];
-	eventHandlers: ToolEventHandlers;
-} {
-	const registeredTools: RegisteredToolLike[] = [];
-	const eventHandlers: ToolEventHandlers = {};
-	const api = {
-		registerTool(tool: RegisteredToolLike): void {
-			registeredTools.push(tool);
-		},
-		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
-			eventHandlers[event] = handler;
-		},
-		getAllTools(): unknown[] {
-			throw new Error("Extension runtime not initialized.");
-		},
-	} as unknown as ExtensionAPI;
-
-	return { api, registeredTools, eventHandlers };
+/** Resolve the built-in renderers the chain would use, in resolver order. */
+function resolveBuiltInRenderers(
+	resolvers: ToolRendererChainResolverLike[],
+): Map<string, ToolRendererChainEntryLike> {
+	const resolved = new Map<string, ToolRendererChainEntryLike>();
+	for (const name of BUILT_IN_TOOL_NAMES) {
+		let entry: ToolRendererChainEntryLike | undefined;
+		for (const resolver of resolvers) {
+			const applied = resolver(name, () => entry);
+			if (applied) entry = applied;
+		}
+		if (entry) {
+			resolved.set(name, entry);
+		}
+	}
+	return resolved;
 }
 
-test("registerToolDisplayOverrides survives unavailable load-time discovery and registers before the first render", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStubWithoutLoadTimeToolDiscovery();
+function externalOwner(name: string, source = "local"): unknown {
+	return { name, sourceInfo: { source, path: `agent/extensions/pi-ssh-remote/${name}.ts` } };
+}
 
-	// PR #34 defers registration; a discovery failure at load time must not throw
-	// and must not prevent the lifecycle pass from registering the renderers.
-	assert.doesNotThrow(() => registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG));
-	assert.deepEqual(registeredTools.map((tool) => tool.name), []);
-
-	await eventHandlers.before_agent_start?.();
-
-	assert.deepEqual(
-		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "edit", "find", "grep", "ls", "read", "write"],
-	);
-});
-
-test("registerToolDisplayOverrides copies built-in prompt metadata onto overridden tools", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	// Built-in overrides are deferred until session/agent lifecycle so other
-	// extensions can claim ownership first (e.g. pi-patty-bg-tasks for bash).
-	assert.deepEqual(registeredTools.map((tool) => tool.name).sort(), []);
-	await eventHandlers.before_agent_start?.();
-
-	assert.deepEqual(
-		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "edit", "find", "grep", "ls", "read", "write"],
-	);
-	assert.equal(registeredTools.length, 7);
-
-	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	const cwd = process.cwd();
-	const builtInTools = {
-		read: createReadTool(cwd),
-		grep: createGrepTool(cwd),
-		find: createFindTool(cwd),
-		ls: createLsTool(cwd),
-		bash: createBashTool(cwd),
-		edit: createEditTool(cwd),
-		write: createWriteTool(cwd),
-	};
-
-	for (const [name, builtInTool] of Object.entries(builtInTools)) {
-		const registeredTool = byName.get(name);
-		const builtInMetadata = builtInTool as unknown as RegisteredToolLike;
-		assert.ok(registeredTool, `expected '${name}' to be registered`);
-		assert.equal(registeredTool.promptSnippet, builtInMetadata.promptSnippet);
+async function withTempDir(name: string, run: (dir: string) => Promise<void> | void): Promise<void> {
+	const dir = mkdtempSync(join(tmpdir(), name));
+	try {
+		await run(dir);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
 	}
+}
 
-	// Prompt metadata is copied verbatim from the built-ins, whatever the
-	// installed Pi version ships (1.3's bash carries a PI_* env guideline,
-	// older versions had none).
-	for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
-		const builtInMetadata = builtInTools[name] as unknown as RegisteredToolLike;
-		assert.deepEqual(
-			byName.get(name)?.promptGuidelines,
-			builtInMetadata.promptGuidelines,
-			`${name} promptGuidelines match the built-in tool`,
-		);
-	}
-});
+// ---------------------------------------------------------------------------
+// Renderer-only built-in contract
+// ---------------------------------------------------------------------------
 
-test("registerToolDisplayOverrides defers built-in display renderers until session lifecycle", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.equal(registeredTools.length, 0, "must not register built-ins during extension load");
-
-	await eventHandlers.session_start?.();
-
-	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	for (const name of ["read", "grep", "find", "ls", "bash", "edit", "write"] as const) {
-		const registeredTool = byName.get(name);
-		assert.ok(registeredTool, `expected '${name}' after session_start`);
-		assert.equal(typeof registeredTool.renderCall, "function", `${name} has renderCall after session_start`);
-		assert.equal(typeof registeredTool.renderResult, "function", `${name} has renderResult after session_start`);
-	}
-});
-
-test("defers built-in bash override when another extension owns bash after load", async () => {
-	// Simulate load-order: tool-display evaluates first (no external bash yet),
-	// then pi-patty-bg-tasks registers bash before session_start/before_agent_start.
-	const externalTools: unknown[] = [];
+test("built-in tools are never registered, regardless of ownership or lifecycle", async () => {
+	const externalTools = [
+		externalOwner("read"),
+		externalOwner("bash", "package"),
+		externalOwner("write"),
+	];
 	const { api, registeredTools, eventHandlers } = createExtensionApiStub(externalTools);
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.equal(registeredTools.some((tool) => tool.name === "bash"), false);
-
-	externalTools.push({
-		name: "bash",
-		sourceInfo: {
-			source: "package",
-			path: "node_modules/pi-patty-bg-tasks/src/tools/bash.ts",
-		},
-	});
+	assert.deepEqual(registeredTools.map((tool) => tool.name), [], "nothing registers at load");
 
 	await eventHandlers.session_start?.();
 	await eventHandlers.before_agent_start?.();
 
-	const registeredNames = new Set(registeredTools.map((tool) => tool.name));
-	assert.equal(registeredNames.has("bash"), false, "must yield bash to external owner");
-	assert.equal(registeredNames.has("read"), true);
-	assert.equal(registeredNames.has("write"), true);
+	assert.deepEqual(
+		registeredTools.map((tool) => tool.name),
+		[],
+		"no built-in registers even with external owners present",
+	);
 });
 
-test("registerToolDisplayOverrides clones built-in parameter schemas so Pi TUI keeps extension renderers active", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+test("built-in renderers resolve through the chain immediately at load, no lifecycle needed", () => {
+	const { api, rendererResolvers } = createExtensionApiStub();
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	await eventHandlers.before_agent_start?.();
+	assert.equal(rendererResolvers.length, 1, "one chain resolver registered");
 
-	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	const cwd = process.cwd();
-	const builtInTools = {
-		read: createReadTool(cwd),
-		grep: createGrepTool(cwd),
-		find: createFindTool(cwd),
-		ls: createLsTool(cwd),
-		bash: createBashTool(cwd),
-		edit: createEditTool(cwd),
-		write: createWriteTool(cwd),
-	};
-
-	for (const [name, builtInTool] of Object.entries(builtInTools)) {
-		const registeredTool = byName.get(name);
-		assert.ok(registeredTool, `expected '${name}' to be registered`);
-		assert.notEqual(
-			registeredTool.parameters,
-			builtInTool.parameters,
-			`expected '${name}' to use a cloned parameter object`,
-		);
-		assert.deepEqual(registeredTool.parameters, builtInTool.parameters);
+	const resolved = resolveBuiltInRenderers(rendererResolvers);
+	for (const name of BUILT_IN_TOOL_NAMES) {
+		const entry = resolved.get(name);
+		assert.ok(entry, `${name} resolves`);
+		assert.equal(typeof entry?.renderCall, "function", `${name} has renderCall`);
+		assert.equal(typeof entry?.renderResult, "function", `${name} has renderResult`);
 	}
+
+	// Renderers read the live config getter at render time, so lifecycle events
+	// add nothing for the built-ins (they only drive MCP/custom decoration).
+	assert.equal(typeof resolved.get("edit")?.renderShell, "string");
 });
 
-test("registerToolDisplayOverrides forces edit into the default render shell so tool backgrounds fill the full row", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	await eventHandlers.before_agent_start?.();
-
-	const byName = new Map(registeredTools.map((tool) => [tool.name, tool]));
-	assert.equal(byName.get("edit")?.renderShell, "default");
-});
-
-test("registerToolDisplayOverrides leaves externally owned read/edit/grep tools active", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub([
-		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/example-read/src/read.ts" } },
-		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/example-edit/src/edit.ts" } },
-		{ name: "grep", sourceInfo: { source: "local", path: "agent/extensions/example-grep/src/grep.ts" } },
+test("the chain replaces an external owner's renderer for built-in tools", () => {
+	const { api, rendererResolvers } = createExtensionApiStub([
+		externalOwner("read"),
+		externalOwner("edit"),
 	]);
 
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	await eventHandlers.before_agent_start?.();
-
-	const registeredNames = new Set(registeredTools.map((tool) => tool.name));
-	assert.equal(registeredNames.has("read"), false);
-	assert.equal(registeredNames.has("edit"), false);
-	assert.equal(registeredNames.has("grep"), false);
-	assert.equal(registeredNames.has("find"), true);
-	assert.equal(registeredNames.has("ls"), true);
-	assert.equal(registeredNames.has("bash"), true);
-	assert.equal(registeredNames.has("write"), true);
-});
-
-test("externally owned tools keep their execute and render through the Pi tool renderer chain", async () => {
-	const { api, registeredTools, eventHandlers, rendererResolvers } = createExtensionApiStub([
-		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-	]);
-
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-
-	// Ownership resolves on the session lifecycle, after every extension has
-	// registered its tools (PR #34 semantics kept from the upstream merges).
-	assert.equal(registeredTools.length, 0, "nothing is registered at load time");
-	await eventHandlers.before_agent_start?.();
-
-	assert.equal(registeredTools.some((tool) => tool.name === "read"), false);
-	assert.equal(rendererResolvers.length, 1);
 	const resolver = rendererResolvers[0];
 
 	const remoteRenderCall = () => "remote-render";
@@ -327,28 +172,34 @@ test("externally owned tools keep their execute and render through the Pi tool r
 	const genericLine = decoratedRemote.renderCall({ a: 1 }, theme).render(120).join("\n");
 	assert.match(genericLine, /remote/, "generic renderer draws the tool name");
 	assert.doesNotMatch(genericLine, /^base$/, "generic renderer replaces the native call line");
-
-	const registeredWrite = registeredTools.find((tool) => tool.name === "write");
-	assert.ok(registeredWrite, "expected owned write to stay registered");
-	const resolvedWrite = resolver("write", () => ({ renderCall: () => "base" }));
-	assert.equal(resolvedWrite?.renderCall, registeredWrite.renderCall, "owned tools keep the registered renderer");
 });
 
-interface LateBoundApiStub {
-	api: ExtensionAPI;
-	registeredTools: RegisteredToolLike[];
-	eventHandlers: ToolEventHandlers;
-	rendererResolvers: ToolRendererChainResolverLike[];
-	bindToolRegistry(tools: unknown[]): void;
-}
+test("per-tool config flags gate built-in rendering without any registration", () => {
+	const config = buildConfig({
+		disableEnhancedToolRender: {
+			read: false,
+			grep: true,
+			find: true,
+			ls: true,
+			bash: true,
+			edit: true,
+			write: true,
+		},
+	});
+	const { api, registeredTools, rendererResolvers } = createExtensionApiStub();
 
-// Pi wires pi.getAllTools() after extension load, so ownership is unknown while
-// extensions load. This stub throws until the registry is bound.
-function createLateBoundExtensionApiStub(): LateBoundApiStub {
+	registerToolDisplayOverrides(api, () => config);
+	assert.deepEqual(registeredTools.map((tool) => tool.name), [], "nothing registers");
+
+	const resolver = rendererResolvers[0];
+	assert.ok(resolver("read", () => undefined), "read renders when not disabled");
+	assert.equal(resolver("bash", () => undefined), undefined, "disabled bash passes through");
+	assert.equal(resolver("write", () => undefined), undefined, "disabled write passes through");
+});
+
+test("getAllTools being unavailable never affects built-in rendering", () => {
 	const registeredTools: RegisteredToolLike[] = [];
-	const eventHandlers: ToolEventHandlers = {};
 	const rendererResolvers: ToolRendererChainResolverLike[] = [];
-	let toolRegistry: unknown[] | undefined;
 	const api = {
 		registerTool(tool: RegisteredToolLike): void {
 			registeredTools.push(tool);
@@ -356,139 +207,137 @@ function createLateBoundExtensionApiStub(): LateBoundApiStub {
 		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
 			rendererResolvers.push(resolver);
 		},
-		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
-			eventHandlers[event] = handler;
+		on(_event: string, _handler: EventHandler): void {
+			// No lifecycle needed for this test.
 		},
 		getAllTools(): unknown[] {
-			if (!toolRegistry) {
-				throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
-			}
-			return withDefaultReadEditOwners(toolRegistry);
+			throw new Error("Extension runtime not initialized.");
 		},
 	} as unknown as ExtensionAPI;
 
+	assert.doesNotThrow(() => registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG));
+	assert.deepEqual(registeredTools.map((tool) => tool.name), []);
+	assert.equal(resolveBuiltInRenderers(rendererResolvers).size, BUILT_IN_TOOL_NAMES.length);
+});
+
+// ---------------------------------------------------------------------------
+// Write previous-content capture via the tool_call / tool_result chain events
+// ---------------------------------------------------------------------------
+
+interface WriteCaptureHarness {
+	api: ExtensionAPI;
+	toolCall: (input: Record<string, unknown>, toolCallId?: string) => Promise<void>;
+	toolResult: (input: Record<string, unknown>, toolCallId?: string, isError?: boolean) => Promise<void>;
+	recorded: Array<{ toolCallId: string; path: string; previous: { existed: boolean; content?: string }; content: string }>;
+}
+
+function createWriteCaptureHarness(config: ToolDisplayConfig, nestedIds: Set<string>): WriteCaptureHarness {
+	const { api, eventHandlers } = createExtensionApiStub();
+	const recorded: WriteCaptureHarness["recorded"] = [];
+	const observer = {
+		isNested: (id: string) => nestedIds.has(id),
+		record: (
+			toolCallId: string,
+			path: string,
+			previous: { existed: boolean; content?: string },
+			content: string,
+		) => {
+			recorded.push({ toolCallId, path, previous, content });
+		},
+	};
+	registerToolDisplayOverrides(api, () => config, observer);
 	return {
 		api,
-		registeredTools,
-		eventHandlers,
-		rendererResolvers,
-		bindToolRegistry(tools: unknown[]): void {
-			toolRegistry = tools;
+		recorded,
+		toolCall: async (input, toolCallId = "write-1") => {
+			await eventHandlers.tool_call?.({ toolName: "write", toolCallId, input });
+		},
+		toolResult: async (input, toolCallId = "write-1", isError = false) => {
+			await eventHandlers.tool_result?.({ toolName: "write", toolCallId, input, isError });
 		},
 	};
 }
 
-test("registerToolDisplayOverrides defers ownership to session start and never shadows another extension's tools", async () => {
-	const { api, registeredTools, eventHandlers, rendererResolvers, bindToolRegistry } =
-		createLateBoundExtensionApiStub();
+test("write previous content is captured on tool_call and rendered as a diff", async () => {
+	await withTempDir("pi-render-write-capture-", async (dir) => {
+		const filePath = join(dir, "notes.txt");
+		writeFileSync(filePath, "before\n", "utf8");
 
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.deepEqual(registeredTools.map((tool) => tool.name), [], "no built-in tool registers while ownership is unknown");
-	assert.equal(rendererResolvers.length, 1, "renderers are captured for the renderer chain during load");
+		const { api, eventHandlers, rendererResolvers } = createExtensionApiStub();
+		registerToolDisplayOverrides(api, () => buildConfig({ allowExternalDiffPreviews: true }));
 
-	bindToolRegistry([
-		{ name: "read", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-		{ name: "edit", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-		{ name: "write", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-		{ name: "bash", sourceInfo: { source: "local", path: "agent/extensions/pi-ssh-remote/index.ts" } },
-	]);
-	await eventHandlers.session_start?.();
+		await eventHandlers.tool_call?.({ toolName: "write", toolCallId: "w1", input: { path: filePath, content: "after\n" } });
 
-	const registeredNames = new Set(registeredTools.map((tool) => tool.name));
-	assert.deepEqual(
-		[...registeredNames].sort(),
-		["find", "grep", "ls"],
-		"only unowned built-ins register after the registry is known",
-	);
+		let writeEntry: ToolRendererChainEntryLike | undefined;
+		const resolver = rendererResolvers[0];
+		const resolved = resolver("write", () => writeEntry);
+		if (resolved) writeEntry = resolved;
+		assert.equal(typeof writeEntry?.renderResult, "function", "write renders through the chain");
 
-	const resolver = rendererResolvers[0];
-	const remoteRenderCall = () => "remote-render";
-	const resolvedRead = resolver("read", () => ({ renderCall: remoteRenderCall }));
-	assert.ok(resolvedRead);
-	assert.notEqual(resolvedRead.renderCall, remoteRenderCall, "read still renders through tool-display");
-});
+		const rendered = (writeEntry!.renderResult!({
+			content: [{ type: "text", text: "ok" }],
+			details: {},
+		}, { isPartial: false, expanded: true }, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, {
+			toolCallId: "w1",
+			state: {},
+			args: { path: filePath, content: "after\n" },
+		}) as { render(w: number): string[] }).render(120).join("\n");
 
-test("registerToolDisplayOverrides registers built-in overrides at session start when no extension owns them", async () => {
-	const { api, registeredTools, eventHandlers, bindToolRegistry } = createLateBoundExtensionApiStub();
-
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	assert.deepEqual(registeredTools.map((tool) => tool.name), []);
-
-	bindToolRegistry([]);
-	await eventHandlers.session_start?.();
-
-	assert.deepEqual(
-		registeredTools.map((tool) => tool.name).sort(),
-		["bash", "edit", "find", "grep", "ls", "read", "write"],
-	);
-});
-
-test("bash override uses shellPath from Pi settings", async () => {
-	await withTempDir("pi-render-shellpath-", async (dir) => {
-		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-		process.env.PI_CODING_AGENT_DIR = dir;
-		writeFileSync(
-			join(dir, "settings.json"),
-			JSON.stringify({ shellPath: "/definitely/missing/bash" }),
-			"utf8",
-		);
-
-		try {
-			const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-			registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-			await eventHandlers.before_agent_start?.();
-
-			const bashTool = registeredTools.find((tool) => tool.name === "bash") as ExecutableToolLike | undefined;
-			assert.ok(bashTool, "expected bash override to be registered");
-			await assert.rejects(
-				bashTool.execute("tool-call-1", { command: "printf test" }, undefined, undefined, { cwd: process.cwd() }),
-				/custom shell path not found/i,
-			);
-			assert.equal(bashTool.description.length > 0, true);
-		} finally {
-			if (previousAgentDir === undefined) {
-				delete process.env.PI_CODING_AGENT_DIR;
-			} else {
-				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-			}
-		}
+		assert.match(rendered, /before/, "the captured previous content appears as a diff line");
+		assert.match(rendered, /after/, "the new content appears");
 	});
 });
 
-test("bash override uses shellCommandPrefix from Pi settings", async () => {
-	await withTempDir("pi-render-shellprefix-", async (dir) => {
-		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-		process.env.PI_CODING_AGENT_DIR = dir;
-		writeFileSync(
-			join(dir, "settings.json"),
-			JSON.stringify({ shellCommandPrefix: "printf 'prefix-output\\n'" }),
-			"utf8",
-		);
+test("write capture is gated on the write rendering flag", async () => {
+	await withTempDir("pi-render-write-gate-", async (dir) => {
+		const filePath = join(dir, "notes.txt");
+		writeFileSync(filePath, "before\n", "utf8");
 
-		try {
-			const { api, registeredTools, eventHandlers } = createExtensionApiStub();
-			registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-			await eventHandlers.before_agent_start?.();
-
-			const bashTool = registeredTools.find((tool) => tool.name === "bash") as ExecutableToolLike | undefined;
-			assert.ok(bashTool, "expected bash override to be registered");
-			const result = await bashTool.execute(
-				"tool-call-2",
-				{ command: "printf 'command-output\\n'" },
-				undefined,
-				undefined,
-				{ cwd: process.cwd() },
-			);
-			assert.equal(getTextOutput(result).trim(), "prefix-output\ncommand-output");
-		} finally {
-			if (previousAgentDir === undefined) {
-				delete process.env.PI_CODING_AGENT_DIR;
-			} else {
-				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-			}
-		}
+		const config = buildConfig({
+			disableEnhancedToolRender: {
+				read: true,
+				grep: true,
+				find: true,
+				ls: true,
+				bash: true,
+				edit: true,
+				write: false,
+			},
+		});
+		const harness = createWriteCaptureHarness(config, new Set());
+		await harness.toolCall({ path: filePath, content: "after\n" }, "w1");
+		assert.deepEqual(harness.recorded, []);
 	});
 });
+
+test("successful nested writes record codemode diffs on tool_result; failures do not", async () => {
+	await withTempDir("pi-render-write-codemode-", async (dir) => {
+		const filePath = join(dir, "notes.txt");
+		writeFileSync(filePath, "before\n", "utf8");
+		const nestedIds = new Set(["nested-1", "nested-2", "nested-3"]);
+		const harness = createWriteCaptureHarness(buildConfig({ allowExternalDiffPreviews: true }), nestedIds);
+
+		await harness.toolCall({ path: filePath, content: "after\n" }, "nested-1");
+		await harness.toolResult({ path: filePath }, "nested-1", false);
+		assert.equal(harness.recorded.length, 1, "successful nested write records a diff");
+		assert.deepEqual(
+			{ path: harness.recorded[0].path, previous: harness.recorded[0].previous, content: harness.recorded[0].content },
+			{ path: filePath, previous: { existed: true, content: "before\n" }, content: "after\n" },
+		);
+
+		await harness.toolCall({ path: filePath, content: "v3\n" }, "nested-2");
+		await harness.toolResult({ path: filePath }, "nested-2", true);
+		assert.equal(harness.recorded.length, 1, "failed write records nothing");
+
+		await harness.toolCall({ path: filePath, content: "v4\n" }, "top-1");
+		await harness.toolResult({ path: filePath }, "top-1", false);
+		assert.equal(harness.recorded.length, 1, "non-nested write records nothing");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ToolDisplayApi + MCP/custom decoration (unchanged behavior)
+// ---------------------------------------------------------------------------
 
 test("runtime API registers and unregisters typed adapter contracts", () => {
 	type GlobalWithToolDisplayApi = typeof globalThis & {
@@ -559,13 +408,17 @@ test("registerToolDisplayOverrides drains pending display decorations from early
 	}
 });
 
-test("bash renderResult reuses one Text component across partial updates", async () => {
-	const { api, registeredTools, eventHandlers } = createExtensionApiStub();
+test("bash renderResult reuses one Text component across partial updates", () => {
+	const { api, registeredTools, rendererResolvers } = createExtensionApiStub();
 	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	await eventHandlers.before_agent_start?.();
 
-	const bashTool = registeredTools.find((tool) => tool.name === "bash");
-	assert.ok(bashTool, "bash override registered");
+	// Renderers resolve via the chain; surface them as a named tool-like entry.
+	let bashEntry: ToolRendererChainEntryLike | undefined;
+	const resolver = rendererResolvers[0];
+	const resolved = resolver("bash", () => bashEntry);
+	if (resolved) bashEntry = resolved;
+	const bashTool = { name: "bash", ...(bashEntry ?? {}) } as RegisteredToolLike;
+	assert.equal(registeredTools.some((tool) => tool.name === "bash"), false, "bash is not registered");
 	assert.equal(typeof bashTool.renderResult, "function", "bash has renderResult");
 
 	const state: Record<string, unknown> = {};

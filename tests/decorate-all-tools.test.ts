@@ -64,7 +64,7 @@ test("e2e: wildcard can be disabled to pass unknown tools through", async () => 
 test("disabling a built-in override keeps the owner's renderer (no wildcard hijack)", async () => {
   const { api, resolvers, handlers } = buildHost();
   registerToolDisplayOverrides(api, () =>
-    normalizeToolDisplayConfig({ registerToolOverrides: { edit: false, write: false } }),
+    normalizeToolDisplayConfig({ disableEnhancedToolRender: { edit: true, write: true } }),
   );
   await handlers.get("session_start")?.();
   const resolver = resolvers[0];

@@ -71,8 +71,8 @@ function createControllerStub(
 	let config: ToolDisplayConfig = {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
 		...initialConfig,
-		registerToolOverrides: {
-			...(initialConfig?.registerToolOverrides ?? DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides),
+		disableEnhancedToolRender: {
+			...(initialConfig?.disableEnhancedToolRender ?? DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender),
 		},
 	};
 	const last = { config: null as ToolDisplayConfig | null, ctx: null as ExtensionCommandContext | null, options: undefined as { scope?: "global" | "project" } | undefined };
@@ -81,10 +81,10 @@ function createControllerStub(
 		controller: {
 			getConfig: () => ({
 				...config,
-				registerToolOverrides: { ...config.registerToolOverrides },
+				disableEnhancedToolRender: { ...config.disableEnhancedToolRender },
 			}),
 			setConfig: (next: ToolDisplayConfig, ctx: ExtensionCommandContext, options?: { scope?: "global" | "project" }) => {
-				config = { ...next, registerToolOverrides: { ...next.registerToolOverrides } };
+				config = { ...next, disableEnhancedToolRender: { ...next.disableEnhancedToolRender } };
 				last.config = config;
 				last.ctx = ctx;
 				last.options = options;

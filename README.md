@@ -187,9 +187,9 @@ import { decorateToolForDisplay, decorateMcpToolForDisplay } from "pi-ui-enhance
 
 `decorateToolForDisplay(tool, adapter)` applies the runtime decoration immediately when `pi-ui-enhancement` is loaded, or queues the decoration until the API becomes available. Use adapter options such as `kind: "read" | "edit" | "mcp" | "generic"` to select the renderer family; `decorateMcpToolForDisplay(tool)` is the shortcut for MCP-style tools. The API symbols themselves keep their original `pi-tool-display.api.v1` names so extensions built against upstream keep working.
 
-On Pi 1.1 and later, `pi-ui-enhancement` also applies its built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time. Extensions that re-register `read`, `bash`, `edit`, or `write` with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes these tools to a remote SSH host — keep compact tool-display rendering in any load order, and their execute logic stays intact. On Pi versions without the renderer chain, externally owned tools keep their own rendering.
+On Pi 1.1 and later, `pi-ui-enhancement` applies all built-in tool renderers through the Pi tool renderer chain (`registerToolRenderer`) at render time, and **never registers (owns) `read`, `grep`, `find`, `ls`, `bash`, `edit`, or `write`**. Extensions that re-register these tools with their own execute logic — for example [`pi-ssh-remote`](https://pi.dev/packages/pi-ssh-remote), which routes them to a remote SSH host, or `pi-patty-bg-tasks` owning `bash` — keep their execute logic in charge, and compact tool-display rendering still applies in any load order. No `Tool "read" conflicts with ...` diagnostic can occur, because the extension registers no built-in tools at all.
 
-Pi binds `pi.getAllTools()` after extensions load, so ownership is unknown during load. `pi-ui-enhancement` therefore defers built-in tool registration to the `session_start` event and registers only the tools no other extension owns. This avoids the `Tool "read" conflicts with ...` startup diagnostic and keeps the other extension's execute logic in charge.
+The one piece of state rendering cannot derive on its own is a write target's previous content (needed for the write-result diff); it is captured through the `tool_call` chain event before execution and consumed by the renderer via the call's state carrier. Nested writes inside codemode runs record their diff on a successful `tool_result`.
 
 ## Presets
 
@@ -302,9 +302,9 @@ Effective configuration is merged as defaults → global config → project conf
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | boolean | `true` | Global switch for all rendering and tool ownership; `/tool-display` stays available when off so it can be turned back on |
+| `enabled` | boolean | `true` | Global switch for all rendering; `/tool-display` stays available when off so it can be turned back on |
 | `debug` | boolean | `false` | Opt-in file logging for extension diagnostics; missing values are treated as `false` |
-| `registerToolOverrides` | object | all `true` | Built-in tool ownership flags |
+| `disableEnhancedToolRender` | object | all `false` | Disable list for built-in enhanced rendering (no tool ownership is involved; `true` turns that tool's enhanced rendering off, native rendering shows instead) |
 | `customToolOverrides` | object | `{ "*": … }` | Rendering rules for non-built-in extension tools. The shipped `"*"` wildcard decorates every third-party tool (compact call line + summarized output); add an exact-name entry to override one tool, or `"*": { "enabled": false }` to turn decorate-all off |
 | `enableNativeUserMessageBox` | boolean | `false` | Bordered user prompt rendering (off by default; user prompts keep Pi's native look) |
 | `enableShikiCodeBlocks` | boolean | `true` | Use Shiki's TextMate grammar renderer for markdown code fences when the language is supported |
@@ -336,25 +336,25 @@ Effective configuration is merged as defaults → global config → project conf
 | `showTruncationHints` | boolean | `false` | Show truncation indicators for compacted output |
 | `showRtkCompactionHints` | boolean | `false` | Show RTK compaction hints when RTK metadata exists |
 
-### Tool ownership
+### Built-in rendering overrides
 
-Use `registerToolOverrides` to control which built-in tools this extension owns:
+Use `disableEnhancedToolRender` to turn off tool-display rendering for specific built-in tools (there is no tool ownership to hand over — the extension never registers built-ins). Everything renders by default; the map is a disable list:
 
 ```json
 {
-  "registerToolOverrides": {
-    "read": true,
-    "grep": true,
-    "find": true,
-    "ls": true,
-    "bash": true,
-    "edit": true,
-    "write": true
+  "disableEnhancedToolRender": {
+    "read": false,
+    "grep": false,
+    "find": false,
+    "ls": false,
+    "bash": false,
+    "edit": false,
+    "write": false
   }
 }
 ```
 
-Set any entry to `false` if another extension should handle that tool instead.
+Set any entry to `true` to fall back to that tool's native rendering (for example when another rendering extension should own its look). A legacy `registerToolOverrides` key in an existing config is still honored with its old inverted meaning and can be removed after migrating.
 
 > Changes to tool ownership take effect after `/reload`.
 
@@ -408,7 +408,7 @@ Boolean shorthand is also accepted:
 
 Notes:
 
-- Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `registerToolOverrides` for those.
+- Built-in tool names (`read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`) are ignored here; use `disableEnhancedToolRender` for those.
 - `generic` call rendering shows the tool name and argument count, then compacts the result according to `outputMode`.
 - `mcp` call rendering understands MCP proxy-style arguments such as `tool`, `server`, `search`, `describe`, and `connect`.
 - Changes for already-registered tools take effect after `/reload`; tools registered later can be decorated as they register.
@@ -419,14 +419,14 @@ Notes:
 {
   "enabled": true,
   "debug": false,
-  "registerToolOverrides": {
-    "read": true,
-    "grep": true,
-    "find": true,
-    "ls": true,
-    "bash": true,
-    "edit": true,
-    "write": true
+  "disableEnhancedToolRender": {
+    "read": false,
+    "grep": false,
+    "find": false,
+    "ls": false,
+    "bash": false,
+    "edit": false,
+    "write": false
   },
   "customToolOverrides": {},
   "enableNativeUserMessageBox": true,
@@ -524,23 +524,23 @@ This keeps the UI aligned with the current environment while still allowing dyna
 
 If another extension is already rendering one of the built-in tools:
 
-1. Set `registerToolOverrides.<tool>` to `false`
+1. Set `disableEnhancedToolRender.<tool>` to `true`
 2. Run `/reload`
-3. Use `/tool-display show` to confirm the effective ownership state
+3. Use `/tool-display show` to confirm the effective rendering state
 
-Built-in tool overrides (including `bash`) are **queued at load** and only registered during `session_start` / `before_agent_start`. Before registering, the extension re-checks `pi.getAllTools()` and yields any tool already owned by a non-builtin source (for example `pi-patty-bg-tasks` owning `bash`). Immediate load-time registration is intentionally avoided so package order cannot create a hard `Tool "bash" conflicts with ...` diagnostic.
+The extension registers **no built-in tools**, so a hard `Tool "bash" conflicts with ...` diagnostic between this extension and another bash owner (background-task managers, SSH routers, RTK shims, ...) cannot occur: the other extension keeps its `execute`, and tool-display's rendering is layered on top through the Pi tool renderer chain (Pi 1.1+), in any load order.
 
-If you still prefer an explicit config, set:
+If you want a specific built-in to render entirely natively (for example another rendering extension owns its look), disable its rendering explicitly:
 
 ```json
 {
-  "registerToolOverrides": {
-    "bash": false
+  "disableEnhancedToolRender": {
+    "bash": true
   }
 }
 ```
 
-On Pi 1.1+, built-in tools owned by another extension are instead rendered compactly through the Pi tool renderer chain (`registerToolRenderer`): the owner keeps its execute logic and `pi-ui-enhancement` still applies its display renderers, in any load order. On older Pi versions the skip behavior above applies.
+Built-in rendering on Pi versions without the renderer chain (Pi < 1.1) falls back to the host's native rendering; the write-result diff then also loses its previous-content capture (see the renderer-chain note above).
 
 ### Config not loading
 

@@ -21,10 +21,9 @@ function withTempDir(name: string, run: (dir: string) => void): void {
   }
 }
 
-test("config normalization clamps invalid values and migrates legacy read override", () => {
+test("config normalization clamps invalid values and treats the disable list literally", () => {
   const config = normalizeToolDisplayConfig({
-    registerReadToolOverride: false,
-    registerToolOverrides: { bash: false },
+    disableEnhancedToolRender: { bash: true, read: false },
     readOutputMode: "invalid",
     searchOutputMode: "count",
     mcpOutputMode: "preview",
@@ -42,9 +41,9 @@ test("config normalization clamps invalid values and migrates legacy read overri
     debug: true,
   });
 
-  assert.equal(config.registerToolOverrides.read, false);
-  assert.equal(config.registerToolOverrides.grep, true);
-  assert.equal(config.registerToolOverrides.bash, false);
+  assert.equal(config.disableEnhancedToolRender.read, false);
+  assert.equal(config.disableEnhancedToolRender.grep, false, "absent entries default to enabled (not disabled)");
+  assert.equal(config.disableEnhancedToolRender.bash, true, "true disables the tool's enhanced rendering");
   assert.equal(config.readOutputMode, DEFAULT_TOOL_DISPLAY_CONFIG.readOutputMode);
   assert.equal(config.searchOutputMode, "count");
   assert.equal(config.mcpOutputMode, "preview");
@@ -62,6 +61,29 @@ test("config normalization clamps invalid values and migrates legacy read overri
   assert.equal(config.debug, true);
 });
 
+test("config normalization maps the legacy ownership key onto the disable list", () => {
+  // Legacy semantics: `true` meant "render this tool"; inverted -> disabled.
+  const legacy = normalizeToolDisplayConfig({
+    registerToolOverrides: { read: true, bash: false },
+  });
+  assert.equal(legacy.disableEnhancedToolRender.read, false, "legacy true -> rendered -> not disabled");
+  assert.equal(legacy.disableEnhancedToolRender.bash, true, "legacy false -> not rendered -> disabled");
+  assert.equal(legacy.disableEnhancedToolRender.write, false, "legacy default (absent) -> rendered");
+
+  // Legacy read-only flag: false meant the read override is off -> disabled.
+  const legacyRead = normalizeToolDisplayConfig({ registerReadToolOverride: false });
+  assert.equal(legacyRead.disableEnhancedToolRender.read, true);
+  assert.equal(legacyRead.disableEnhancedToolRender.bash, false);
+
+  // The new key wins over the legacy key when both are present.
+  const both = normalizeToolDisplayConfig({
+    registerToolOverrides: { read: false },
+    disableEnhancedToolRender: { read: false, bash: true },
+  });
+  assert.equal(both.disableEnhancedToolRender.read, false, "new key takes precedence");
+  assert.equal(both.disableEnhancedToolRender.bash, true, "legacy key ignored when the new key is present");
+});
+
 test("effective config merges trusted project config over global config", () => {
   withTempDir("pi-tool-display-config-merge-", (dir) => {
     const globalConfigFile = join(dir, "global", "config.json");
@@ -70,11 +92,11 @@ test("effective config merges trusted project config over global config", () => 
     mkdirSync(join(dir, "project", ".pi", "extensions", "pi-tool-display"), { recursive: true });
     writeFileSync(globalConfigFile, JSON.stringify({
       readOutputMode: "summary",
-      registerToolOverrides: { bash: false },
+      disableEnhancedToolRender: { bash: true },
     }), "utf8");
     writeFileSync(projectConfigFile, JSON.stringify({
       previewLines: 20,
-      registerToolOverrides: { read: false },
+      disableEnhancedToolRender: { read: true },
     }), "utf8");
 
     const result = loadEffectiveToolDisplayConfig({
@@ -85,8 +107,8 @@ test("effective config merges trusted project config over global config", () => 
 
     assert.equal(result.config.readOutputMode, "summary");
     assert.equal(result.config.previewLines, 20);
-    assert.equal(result.config.registerToolOverrides.bash, false);
-    assert.equal(result.config.registerToolOverrides.read, false);
+    assert.equal(result.config.disableEnhancedToolRender.bash, true, "global disable survives the merge");
+    assert.equal(result.config.disableEnhancedToolRender.read, true, "project disable applies");
     assert.equal(result.activeScope, "project");
   });
 });
@@ -159,13 +181,13 @@ test("project overlay save writes only values that differ from the base config",
     const configFile = join(dir, "config.json");
     const base = normalizeToolDisplayConfig({
       readOutputMode: "summary",
-      registerToolOverrides: { read: false, bash: false },
+      disableEnhancedToolRender: { read: false, bash: false },
     });
     const next = normalizeToolDisplayConfig({
       ...base,
       searchOutputMode: "count",
-      registerToolOverrides: {
-        ...base.registerToolOverrides,
+      disableEnhancedToolRender: {
+        ...base.disableEnhancedToolRender,
         bash: true,
       },
     });
@@ -175,7 +197,7 @@ test("project overlay save writes only values that differ from the base config",
     assert.equal(saved.success, true);
     assert.deepEqual(JSON.parse(readFileSync(configFile, "utf8")), {
       searchOutputMode: "count",
-      registerToolOverrides: { bash: true },
+      disableEnhancedToolRender: { bash: true },
     });
   });
 });

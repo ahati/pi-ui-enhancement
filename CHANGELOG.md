@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.10.24-r3] - 2026-10-24
+
+### Changed
+
+- **Renderer-only built-in tools.** The extension no longer registers (owns) `read`, `grep`, `find`, `ls`, `bash`, `edit`, or `write`. All built-in rendering is applied through the Pi tool renderer chain (`registerToolRenderer`, Pi 1.1+) in every load order, so a hard `Tool "bash" conflicts with ...` startup diagnostic between tool-display and any other bash/edit-owning extension is now structurally impossible.
+- **BREAKING (config renamed + inverted):** `registerToolOverrides` is now `disableEnhancedToolRender` — a disable list where `true` turns a built-in's enhanced rendering off. Everything renders by default. Legacy `registerToolOverrides` entries in existing configs are still honored with their old meaning (inverted) and can be removed after migrating; the legacy `registerReadToolOverride` flag maps the same way.
+- Write-result diffs capture the target file's previous content through a `tool_call` chain event instead of an owned execute wrapper; nested codemode write diffs are recorded on a successful `tool_result`. Behavior is unchanged; the extension no longer replaces any tool's execute.
+- The `bash` override no longer rebuilds the tool from `shellPath` / `shellCommandPrefix` settings — pi's own bash tool handles those natively when nothing re-registers it.
+- `/tool-display show` now reports the per-tool rendering state as `render={...}` instead of `owners={...}`.
+
 ## [2026.10.24-r2] - 2026-10-24
 
 ### Changed
@@ -332,7 +342,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added per-tool ownership config via `registerToolOverrides` for `read`, `grep`, `find`, `ls`, `bash`, `edit`, and `write` so users can avoid tool ownership conflicts with other extensions.
 - Added settings modal toggles for built-in tool ownership and `/reload` guidance when ownership changes.
-- Added backward-compatible config migration from legacy `registerReadToolOverride` to `registerToolOverrides.read`.
+- Added backward-compatible config migration from legacy `registerReadToolOverride` to `disableEnhancedToolRender.read`.
 
 ### Changed
 - Built-in tool override registration is now conditional per tool based on ownership settings.

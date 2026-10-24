@@ -45,8 +45,8 @@ function ownershipChanged(
 ): boolean {
   return BUILT_IN_TOOL_OVERRIDE_NAMES.some(
     (toolName) =>
-      previous.registerToolOverrides[toolName] !==
-      next.registerToolOverrides[toolName],
+      previous.disableEnhancedToolRender[toolName] !==
+      next.disableEnhancedToolRender[toolName],
   );
 }
 

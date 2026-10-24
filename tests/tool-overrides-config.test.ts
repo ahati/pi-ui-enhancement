@@ -36,13 +36,26 @@ interface ToolEventHandlers {
 	before_agent_start?: () => Promise<void> | void;
 }
 
+interface ToolRendererChainEntryLike {
+	renderShell?: unknown;
+	renderCall?: RegisteredToolLike["renderCall"];
+	renderResult?: RegisteredToolLike["renderResult"];
+}
+
+type ToolRendererChainResolverLike = (
+	toolName: string,
+	next: () => ToolRendererChainEntryLike | undefined,
+) => ToolRendererChainEntryLike | undefined;
+
+const BUILT_IN_TOOL_NAMES = ["read", "grep", "find", "ls", "bash", "edit", "write"] as const;
+
 function buildConfig(overrides: Partial<ToolDisplayConfig>): ToolDisplayConfig {
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
 		...overrides,
-		registerToolOverrides: {
-			...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides,
-			...overrides.registerToolOverrides,
+		disableEnhancedToolRender: {
+			...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender,
+			...overrides.disableEnhancedToolRender,
 		},
 	};
 }
@@ -70,6 +83,18 @@ function createExtensionApiStub(allTools: Array<RegisteredToolLike & Record<stri
 	const api = {
 		registerTool(tool: RegisteredToolLike): void {
 			registeredTools.push(tool);
+		},
+		registerToolRenderer(resolver: ToolRendererChainResolverLike): void {
+			// The extension no longer registers built-in tools; renderers arrive
+			// exclusively through the renderer chain. Resolve them eagerly so the
+			// assertions below can address them like the old registered tools.
+			for (const name of BUILT_IN_TOOL_NAMES) {
+				let entry: ToolRendererChainEntryLike | undefined;
+				const resolved = resolver(name, () => entry);
+				if (resolved) {
+					registeredTools.push({ name, ...resolved });
+				}
+			}
 		},
 		on(event: keyof ToolEventHandlers, handler: () => Promise<void> | void): void {
 			eventHandlers[event] = handler;
@@ -264,16 +289,16 @@ test("registerToolDisplayOverrides preserves MCP prompt metadata for proxy and d
 	assert.equal(byName.get("exa_web_search_exa")?.promptGuidelines, undefined);
 });
 
-test("read-only ownership keeps summary line counts confined to read", async () => {
+test("disabling all but read keeps summary line counts confined to read", async () => {
 	const config = buildConfig({
-		registerToolOverrides: {
-			read: true,
-			grep: false,
-			find: false,
-			ls: false,
-			bash: false,
-			edit: false,
-			write: false,
+		disableEnhancedToolRender: {
+			read: false,
+			grep: true,
+			find: true,
+			ls: true,
+			bash: true,
+			edit: true,
+			write: true,
 		},
 		readOutputMode: "summary",
 	});

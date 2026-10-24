@@ -48,9 +48,9 @@ function buildConfig(overrides: Partial<ToolDisplayConfig>): ToolDisplayConfig {
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
 		...overrides,
-		registerToolOverrides: {
-			...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides,
-			...overrides.registerToolOverrides,
+		disableEnhancedToolRender: {
+			...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender,
+			...overrides.disableEnhancedToolRender,
 		},
 	};
 }
@@ -436,10 +436,10 @@ test("non-proxy MCP tool gets promptSnippet from its description", async () => {
 
 // ─── Config Controls ─────────────────────────────────────────────────────────
 
-test("MCP decoration is independent of registerToolOverrides config", async () => {
-	// MCP decoration happens regardless of registerToolOverrides settings
+test("MCP decoration is independent of disableEnhancedToolRender config", async () => {
+	// MCP decoration happens regardless of disableEnhancedToolRender settings
 	const config = buildConfig({
-		registerToolOverrides: {
+		disableEnhancedToolRender: {
 			read: false,
 			grep: false,
 			find: false,

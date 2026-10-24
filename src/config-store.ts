@@ -33,7 +33,7 @@ import {
 	SHIKI_CODE_BLOCK_THEMES,
 	type ToolDisplayConfig,
 	TOOL_DISPLAY_SCALAR_CONFIG_KEYS,
-	type ToolOverrideOwnership,
+	type DisableEnhancedToolRender,
 } from "./types.js";
 import { toRecord } from "./tool-metadata.js";
 
@@ -87,6 +87,8 @@ export interface EffectiveToolDisplayConfigLoadResult extends ConfigLoadResult {
 }
 
 interface LegacyToolDisplayConfigSource extends Partial<ToolDisplayConfig> {
+	/** @deprecated pre-rename ownership flag; `true` meant "render this tool" (inverted). */
+	registerToolOverrides?: unknown;
 	registerReadToolOverride?: unknown;
 }
 
@@ -190,7 +192,7 @@ export function cloneCustomToolOverrides(
 function cloneDefaultConfig(): ToolDisplayConfig {
 	return {
 		...DEFAULT_TOOL_DISPLAY_CONFIG,
-		registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+		disableEnhancedToolRender: { ...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender },
 		customToolOverrides: cloneCustomToolOverrides(DEFAULT_TOOL_DISPLAY_CONFIG.customToolOverrides),
 	};
 }
@@ -316,14 +318,14 @@ export function createToolDisplayConfigOverlay(
 		}
 	}
 
-	const registerToolOverrides: Partial<ToolOverrideOwnership> = {};
+	const disableEnhancedToolRender: Partial<DisableEnhancedToolRender> = {};
 	for (const toolName of BUILT_IN_TOOL_OVERRIDE_NAMES) {
-		if (next.registerToolOverrides[toolName] !== base.registerToolOverrides[toolName]) {
-			registerToolOverrides[toolName] = next.registerToolOverrides[toolName];
+		if (next.disableEnhancedToolRender[toolName] !== base.disableEnhancedToolRender[toolName]) {
+			disableEnhancedToolRender[toolName] = next.disableEnhancedToolRender[toolName];
 		}
 	}
-	if (Object.keys(registerToolOverrides).length > 0) {
-		overlay.registerToolOverrides = registerToolOverrides;
+	if (Object.keys(disableEnhancedToolRender).length > 0) {
+		overlay.disableEnhancedToolRender = disableEnhancedToolRender;
 	}
 
 	const customToolOverrides = createCustomToolOverridesOverlay(
@@ -337,20 +339,37 @@ export function createToolDisplayConfigOverlay(
 	return overlay;
 }
 
-function normalizeToolOverrideOwnership(
-	rawOverrides: unknown,
+function normalizeDisableEnhancedToolRender(
+	rawDisabled: unknown,
+	legacyOwnership: unknown,
 	legacyRegisterReadToolOverride: unknown,
-): ToolOverrideOwnership {
-	const source = toRecord(rawOverrides);
-	const defaults = DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides;
-	const legacyReadDefault = toBoolean(legacyRegisterReadToolOverride, defaults.read);
+): DisableEnhancedToolRender {
+	const defaults = DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender;
 
-	const overrides = { ...defaults };
-	for (const toolName of BUILT_IN_TOOL_OVERRIDE_NAMES) {
-		const fallback = toolName === "read" ? legacyReadDefault : defaults[toolName];
-		overrides[toolName] = toBoolean(source[toolName], fallback);
+	// New disable list: `true` disables a tool's enhanced rendering; absent
+	// entries default to false (rendering enabled).
+	const disabled = toRecord(rawDisabled);
+	if (rawDisabled !== undefined) {
+		const overrides = { ...defaults };
+		for (const toolName of BUILT_IN_TOOL_OVERRIDE_NAMES) {
+			overrides[toolName] = toBoolean(disabled[toolName], false);
+		}
+		return overrides;
 	}
 
+	// Legacy `registerToolOverrides` (inverted semantics): `true` meant
+	// "render this tool". Map it onto the disable list so pre-rename configs
+	// keep working. Default legacy value is true (everything rendered).
+	const legacy = toRecord(legacyOwnership);
+	const legacyReadRendered = toBoolean(legacyRegisterReadToolOverride, true);
+	const overrides = { ...defaults };
+	for (const toolName of BUILT_IN_TOOL_OVERRIDE_NAMES) {
+		const legacyRendered = toBoolean(
+			legacy[toolName],
+			toolName === "read" ? legacyReadRendered : true,
+		);
+		overrides[toolName] = !legacyRendered;
+	}
 	return overrides;
 }
 
@@ -424,7 +443,8 @@ export function normalizeToolDisplayConfig(raw: unknown): ToolDisplayConfig {
 	return {
 		enabled: toBoolean(source.enabled, DEFAULT_TOOL_DISPLAY_CONFIG.enabled),
 		debug: toBoolean(source.debug, DEFAULT_TOOL_DISPLAY_CONFIG.debug),
-		registerToolOverrides: normalizeToolOverrideOwnership(
+		disableEnhancedToolRender: normalizeDisableEnhancedToolRender(
+			source.disableEnhancedToolRender,
 			source.registerToolOverrides,
 			source.registerReadToolOverride,
 		),

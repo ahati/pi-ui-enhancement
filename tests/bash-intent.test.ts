@@ -12,7 +12,7 @@ import { DEFAULT_TOOL_DISPLAY_CONFIG } from "../src/types.ts";
 function config(overrides: Record<string, unknown> = {}) {
   return {
     bashIntentMode: DEFAULT_TOOL_DISPLAY_CONFIG.bashIntentMode,
-    registerToolOverrides: { ...DEFAULT_TOOL_DISPLAY_CONFIG.registerToolOverrides },
+    disableEnhancedToolRender: { ...DEFAULT_TOOL_DISPLAY_CONFIG.disableEnhancedToolRender },
     ...overrides,
   } as never;
 }
@@ -26,10 +26,10 @@ test("shouldInstructBashIntent is true for render-and-instruct", () => {
   assert.equal(shouldInstructBashIntent(config({ bashIntentMode: "render-and-instruct" })), true);
 });
 
-test("shouldInstructBashIntent is false when the extension does not own bash", () => {
+test("shouldInstructBashIntent is false when enhanced bash rendering is disabled", () => {
   assert.equal(
     shouldInstructBashIntent(
-      config({ bashIntentMode: "render-and-instruct", registerToolOverrides: { bash: false } }),
+      config({ bashIntentMode: "render-and-instruct", disableEnhancedToolRender: { bash: true } }),
     ),
     false,
   );
@@ -58,11 +58,11 @@ test("buildBashIntentSystemPrompt is idempotent", () => {
   );
 });
 
-test("buildBashIntentSystemPrompt does not instruct when bash is not owned", () => {
+test("buildBashIntentSystemPrompt does not instruct when enhanced bash rendering is disabled", () => {
   assert.equal(
     buildBashIntentSystemPrompt(
       "BASE",
-      config({ bashIntentMode: "render-and-instruct", registerToolOverrides: { bash: false } }),
+      config({ bashIntentMode: "render-and-instruct", disableEnhancedToolRender: { bash: true } }),
     ),
     undefined,
   );

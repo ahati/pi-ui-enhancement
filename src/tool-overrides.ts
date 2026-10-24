@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   BashToolDetails,
@@ -12,21 +11,11 @@ import type {
   ToolDefinition,
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
-import {
-  createBashTool,
-  createEditTool,
-  createFindTool,
-  createGrepTool,
-  createLsTool,
-  createReadTool,
-  createWriteTool,
-  formatSize,
-} from "@earendil-works/pi-coding-agent";
+import { formatSize } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 // Namespace import on purpose: hyperlink/getCapabilities are only probed at
 // call time so the extension still loads on Pi hosts whose pi-tui predates them.
 import * as PiTui from "@earendil-works/pi-tui";
-import { resolvePiAgentDir } from "./agent-dir.js";
 import { renderBashCall, toStateCarrier } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
 import { registerCleanup } from "./disposable.js";
@@ -51,7 +40,6 @@ import {
 } from "./pending-diff-preview.js";
 import {
   buildPromptSnippetFromDescription,
-  extractPromptMetadata,
   getTextField,
   isMcpToolCandidate,
   isMcpToolNameCandidate,
@@ -71,16 +59,6 @@ import {
   getWriteContentSizeBytes,
   shouldRenderWriteCallSummary,
 } from "./write-display-utils.js";
-
-interface BuiltInTools {
-  read: ReturnType<typeof createReadTool>;
-  grep: ReturnType<typeof createGrepTool>;
-  find: ReturnType<typeof createFindTool>;
-  ls: ReturnType<typeof createLsTool>;
-  bash: ReturnType<typeof createBashTool>;
-  edit: ReturnType<typeof createEditTool>;
-  write: ReturnType<typeof createWriteTool>;
-}
 
 type ConfigGetter = () => ToolDisplayConfig;
 
@@ -133,17 +111,6 @@ interface PendingDiffPreviewState {
   data?: PendingDiffPreviewData;
 }
 
-interface PiSettingsShellConfig {
-  shellPath?: unknown;
-  shellCommandPrefix?: unknown;
-}
-
-interface BashToolOverrideOptions {
-  shellPath?: string;
-  commandPrefix?: string;
-}
-
-const builtInToolCache = new Map<string, BuiltInTools>();
 const RTK_COMPACTION_LABEL = "compacted by RTK";
 export const WRITE_EXECUTION_META_LIMIT = 100;
 const TOOL_DISPLAY_PENDING_DECORATIONS_LIMIT = 100;
@@ -167,8 +134,6 @@ const TOOL_DISPLAY_DECORATED_PROPERTIES = [
 ] as const;
 
 type ToolDisplayKind = "read" | "edit" | "mcp" | "generic";
-
-type BuiltInToolOwnership = "free" | "external" | "unknown";
 
 export interface ToolDisplayAdapter {
   id?: string;
@@ -214,10 +179,6 @@ type PiWithRegisterToolInterception = ExtensionAPI & {
 const decoratedToolDescriptors = new WeakMap<RuntimeToolDefinition, ToolPropertyDescriptorSnapshot>();
 const decoratedTools = new Set<RuntimeToolDefinition>();
 
-function registerRuntimeTool(pi: ExtensionAPI, tool: RuntimeToolDefinition): void {
-  pi.registerTool(tool as unknown as ToolDefinition);
-}
-
 type ToolRendererChainEntry = Pick<RuntimeToolDefinition, "renderCall" | "renderResult" | "renderShell">;
 
 type ToolRendererChainResolver = (
@@ -231,19 +192,6 @@ type PiWithToolRendererChain = ExtensionAPI & {
   registerToolRenderer?: (resolver: ToolRendererChainResolver) => void;
 };
 
-function pickToolRenderers(tool: RuntimeToolDefinition): ToolRendererChainEntry {
-  const entry: ToolRendererChainEntry = {};
-  if (typeof tool.renderCall === "function") {
-    entry.renderCall = tool.renderCall;
-  }
-  if (typeof tool.renderResult === "function") {
-    entry.renderResult = tool.renderResult;
-  }
-  if (typeof tool.renderShell === "string") {
-    entry.renderShell = tool.renderShell;
-  }
-  return entry;
-}
 
 function captureToolPropertyDescriptors(
   tool: RuntimeToolDefinition,
@@ -284,125 +232,6 @@ function restoreToolPropertyDescriptors(
   decoratedTools.clear();
 }
 
-
-function getToolPrepareArguments(tool: unknown): unknown {
-  const prepareArguments = toRecord(tool).prepareArguments;
-  return typeof prepareArguments === "function" ? prepareArguments : undefined;
-}
-
-function cloneToolParameters(parameters: unknown, seen = new WeakMap<object, unknown>()): unknown {
-  if (parameters === null || typeof parameters !== "object") {
-    return parameters;
-  }
-
-  if (seen.has(parameters)) {
-    return seen.get(parameters);
-  }
-
-  const clone: object = Array.isArray(parameters)
-    ? []
-    : Object.create(Object.getPrototypeOf(parameters) as object | null) as object;
-  seen.set(parameters, clone);
-
-  for (const key of Reflect.ownKeys(parameters)) {
-    const descriptor = Object.getOwnPropertyDescriptor(parameters, key);
-    if (!descriptor) {
-      continue;
-    }
-
-    if ("value" in descriptor) {
-      descriptor.value = cloneToolParameters(descriptor.value as unknown, seen);
-    }
-
-    Object.defineProperty(clone, key, descriptor);
-  }
-
-  return clone;
-}
-
-function clearBuiltInToolCache(): void {
-  builtInToolCache.clear();
-}
-
-function getStringSetting(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function loadBashToolOverrideOptions(): BashToolOverrideOptions {
-  const settingsPath = join(resolvePiAgentDir(), "settings.json");
-  if (!existsSync(settingsPath)) {
-    return {};
-  }
-
-  try {
-    const rawSettings = JSON.parse(readFileSync(settingsPath, "utf-8")) as PiSettingsShellConfig;
-    return {
-      shellPath: getStringSetting(rawSettings.shellPath),
-      commandPrefix: getStringSetting(rawSettings.shellCommandPrefix),
-    };
-  } catch (error) {
-    logToolDisplayDebug("Failed to read Pi settings for bash tool overrides.", error);
-    return {};
-  }
-}
-
-function getBuiltInTools(cwd: string): BuiltInTools {
-  let tools = builtInToolCache.get(cwd);
-  if (!tools) {
-    tools = createLazyBuiltInTools(cwd);
-    builtInToolCache.set(cwd, tools);
-  }
-  return tools;
-}
-
-function createLazyBuiltInTools(cwd: string): BuiltInTools {
-  const cache = new Map<string, unknown>();
-  const get = <K extends keyof BuiltInTools>(name: K, factory: () => BuiltInTools[K]): BuiltInTools[K] => {
-    if (!cache.has(name)) {
-      cache.set(name, factory());
-    }
-    return cache.get(name) as BuiltInTools[K];
-  };
-  return {
-    get read() { return get("read", () => createReadTool(cwd)); },
-    get grep() { return get("grep", () => createGrepTool(cwd)); },
-    get find() { return get("find", () => createFindTool(cwd)); },
-    get ls() { return get("ls", () => createLsTool(cwd)); },
-    get bash() { return get("bash", () => createBashTool(cwd, loadBashToolOverrideOptions())); },
-    get edit() { return get("edit", () => createEditTool(cwd)); },
-    get write() { return get("write", () => createWriteTool(cwd)); },
-  } as BuiltInTools;
-}
-
-function createLazyToolRecord<T>(
-  bootstrapTools: BuiltInTools,
-  factory: (tool: BuiltInTools[keyof BuiltInTools]) => T,
-): Record<keyof BuiltInTools, T> {
-  const cache = new Map<string, unknown>();
-  const get = (name: keyof BuiltInTools): T => {
-    if (!cache.has(name)) {
-      cache.set(name, factory(bootstrapTools[name]));
-    }
-    return cache.get(name) as T;
-  };
-  return {
-    get read() { return get("read"); },
-    get grep() { return get("grep"); },
-    get find() { return get("find"); },
-    get ls() { return get("ls"); },
-    get bash() { return get("bash"); },
-    get edit() { return get("edit"); },
-    get write() { return get("write"); },
-  } as Record<keyof BuiltInTools, T>;
-}
-
-function createLazyPromptMetadata(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, ReturnType<typeof extractPromptMetadata>> {
-  return createLazyToolRecord(bootstrapTools, extractPromptMetadata);
-}
-
-function createLazyClonedParameters(bootstrapTools: BuiltInTools): Record<keyof BuiltInTools, unknown> {
-  return createLazyToolRecord(bootstrapTools, (tool) => cloneToolParameters(tool.parameters));
-}
 
 function captureExistingWriteContent(
   cwd: string,
@@ -1700,7 +1529,6 @@ export function registerToolDisplayOverrides(
   getConfig: ConfigGetter,
   codemodeWriteObserver?: CodemodeWriteObserver,
 ): void {
-  clearBuiltInToolCache();
   const toolDisplayApi = installToolDisplayApi(getConfig);
   registerCleanup(() => {
     restoreToolPropertyDescriptors(decoratedToolDescriptors, decoratedTools);
@@ -1709,142 +1537,73 @@ export function registerToolDisplayOverrides(
       delete globalWithApi[TOOL_DISPLAY_API_KEY];
     }
   });
-  const bootstrapTools = getBuiltInTools(process.cwd());
-  const builtInPromptMetadata = createLazyPromptMetadata(bootstrapTools);
-  const clonedParameters = createLazyClonedParameters(bootstrapTools);
   const writeExecutionMetaByToolCallId = new Map<string, WriteExecutionMeta>();
-  const registeredBuiltInToolOverrides = new Set<BuiltInToolOverrideName>();
-
-  // "free": this extension may own the tool. "external": another extension owns
-  // it. "unknown": Pi has not built the tool registry yet, which is the normal
-  // state while extensions load.
-  const discoverBuiltInToolOwnership = (
-    toolName: BuiltInToolOverrideName,
-  ): BuiltInToolOwnership => {
-    const allTools = tryGetAllTools(pi, "Built-in tool override ownership discovery is unavailable; deferring the ownership decision until the session starts.");
-    if (!allTools) {
-      return "unknown";
-    }
-
-    const currentOwner = allTools.find((tool) => getTextField(tool, "name") === toolName);
-    const sourceInfo = toRecord(toRecord(currentOwner).sourceInfo);
-    const source = getTextField(sourceInfo, "source");
-    if (currentOwner && source && source !== "builtin") {
-      logToolDisplayDebug("Skipped built-in tool display override because another tool owner is active.", {
-        toolName,
-        source,
-        path: getTextField(sourceInfo, "path") ?? "unknown",
-      });
-      return "external";
-    }
-
-    return "free";
-  };
-
-  // Built-in overrides are collected at load time and applied after all
-  // extensions have registered tools. Immediate registration races with
-  // packages like pi-patty-bg-tasks that also own `bash`, producing a hard
-  // "Tool \"bash\" conflicts with ..." diagnostic at startup.
-  const pendingBuiltInToolOverrides = new Map<BuiltInToolOverrideName, () => void>();
-
-  // Renderer-only entries for built-ins another extension owns (for example
-  // pi-ssh-remote routing read/bash/edit/write to a remote host). They keep
-  // their owner's execute and get pi-tool-display rendering through the Pi
-  // tool renderer chain on Pi >= 1.1.
+  // Renderer-only entries for the built-in tools, applied through the Pi tool
+  // renderer chain by the resolver registered further down.
   const capturedBuiltInRenderers = new Map<BuiltInToolOverrideName, ToolRendererChainEntry>();
+  // Codemode nested writes: previous content captured at tool_call time (before
+  // the write lands), recorded into the codemode batch only after a successful
+  // tool_result. Keyed by call id; bounded by the same LRU rules as the meta.
+  const pendingWriteCaptures = new Map<
+    string,
+    { path: string; previous: { existed: boolean; content?: string }; content: string }
+  >();
 
-  // Running the registration always captures this extension's renderers, so the
-  // Pi tool renderer chain can apply them. Registration itself is suppressed for
-  // tools another extension owns, which keeps that extension's execute logic.
-  const runBuiltInToolRegistration = (
+  // Built-in tool rendering is applied exclusively through the Pi tool renderer
+  // chain (Pi >= 1.1): the extension never registers (owns) read/grep/find/ls/
+  // bash/edit/write, so it cannot collide with any other bash- or edit-owning
+  // extension (pi-ssh-remote, pi-patty-bg-tasks, pi-rtk, ...). The chain
+  // resolver below applies these renderers at render time; ownership is not
+  // consulted. On Pi < 1.1 (no registerToolRenderer) externally rendered
+  // built-ins keep the host's native rendering.
+  const registerBuiltInRenderers = (
     toolName: BuiltInToolOverrideName,
-    register: () => void,
-    suppressRegistration: boolean,
+    renderers: ToolRendererChainEntry,
   ): void => {
-    const originalRegisterTool = pi.registerTool;
-    pi.registerTool = ((tool: ToolDefinition) => {
-      const candidate = toRecord(tool);
-      if (getTextField(candidate, "name") === toolName) {
-        capturedBuiltInRenderers.set(toolName, pickToolRenderers(candidate));
-      }
-      if (!suppressRegistration) {
-        originalRegisterTool.call(pi, tool);
-      }
-    }) as ExtensionAPI["registerTool"];
+    capturedBuiltInRenderers.set(toolName, renderers);
+  };
 
+  // Write-result diffs need the file's previous content, which only exists
+  // before the write executes. A tool_call handler (chain event, no tool
+  // ownership) captures it keyed by call id; the renderer consumes it through
+  // getWriteExecutionMeta exactly as before.
+  pi.on("tool_call", (event) => {
+    if (event.toolName !== "write") return;
+    if (getConfig().disableEnhancedToolRender.write) return;
+    const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : undefined;
+    if (!toolCallId) return;
+    const path = getStringField(event.input, "path") ?? getStringField(event.input, "file_path");
+    const previous = captureExistingWriteContent(process.cwd(), path, {
+      allowExternalDiffPreviews: getConfig().allowExternalDiffPreviews,
+    });
+    recordWriteExecutionMeta(writeExecutionMetaByToolCallId, toolCallId, {
+      fileExistedBeforeWrite: previous.existed,
+      previousContent: previous.content,
+    });
+    if (path && codemodeWriteObserver?.isNested(toolCallId)) {
+      pendingWriteCaptures.set(toolCallId, {
+        path,
+        previous,
+        content: getToolContentArg(event.input) ?? "",
+      });
+    }
+  });
+
+  // Codemode nested-write diffs are recorded only for writes that actually
+  // succeeded, mirroring the previous execute-side behavior.
+  pi.on("tool_result", (event) => {
+    if (event.toolName !== "write" || event.isError === true) return;
+    const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : undefined;
+    if (!toolCallId) return;
+    const pending = pendingWriteCaptures.get(toolCallId);
+    if (!pending) return;
+    pendingWriteCaptures.delete(toolCallId);
     try {
-      register();
-    } finally {
-      pi.registerTool = originalRegisterTool;
+      codemodeWriteObserver?.record(toolCallId, pending.path, pending.previous, pending.content);
+    } catch {
+      // A failed diff capture must not fail the write.
     }
-
-    if (!suppressRegistration) {
-      registeredBuiltInToolOverrides.add(toolName);
-    }
-    pendingBuiltInToolOverrides.delete(toolName);
-  };
-
-  const registerIfOwned = (
-    toolName: BuiltInToolOverrideName,
-    register: () => void,
-  ): void => {
-    if (
-      registeredBuiltInToolOverrides.has(toolName) ||
-      pendingBuiltInToolOverrides.has(toolName) ||
-      !getConfig().registerToolOverrides[toolName]
-    ) {
-      return;
-    }
-
-    pendingBuiltInToolOverrides.set(toolName, register);
-  };
-
-  const resolvePendingBuiltInToolOwnership = (): void => {
-    for (const [toolName, register] of [...pendingBuiltInToolOverrides]) {
-      if (
-        registeredBuiltInToolOverrides.has(toolName) ||
-        !getConfig().registerToolOverrides[toolName]
-      ) {
-        pendingBuiltInToolOverrides.delete(toolName);
-        continue;
-      }
-
-      const ownership = discoverBuiltInToolOwnership(toolName);
-      if (ownership === "external") {
-        // Capture this extension's renderers without registering, so the Pi
-        // tool renderer chain can still apply them to the owner's tool.
-        runBuiltInToolRegistration(toolName, register, true);
-        continue;
-      }
-
-      if (ownership === "unknown") {
-        // Ownership stays unknown only when the registry is still unavailable.
-        // Register so display rendering keeps working.
-        logToolDisplayDebug("Built-in tool ownership is still unknown; registering the display override.", { toolName });
-        runBuiltInToolRegistration(toolName, register, false);
-        continue;
-      }
-
-      runBuiltInToolRegistration(toolName, register, false);
-    }
-  };
-
-  function createBuiltinToolBase(toolName: keyof BuiltInTools) {
-    return {
-      description: bootstrapTools[toolName].description,
-      ...builtInPromptMetadata[toolName],
-      parameters: clonedParameters[toolName],
-      prepareArguments: getToolPrepareArguments(bootstrapTools[toolName]),
-      async execute(toolCallId: string, params: Record<string, unknown>, signal: unknown, onUpdate: unknown, ctx: { cwd: string }) {
-        return getBuiltInTools(ctx.cwd)[toolName].execute(
-          toolCallId,
-          params as never,
-          signal as never,
-          onUpdate as never,
-        );
-      },
-    };
-  }
+  });
 
   const renderSearchToolResult = (
     result: ToolRenderInput,
@@ -1861,25 +1620,16 @@ export function registerToolDisplayOverrides(
     return { scope: getSearchScope(args), limitSuffix: args.limit !== undefined ? ` (limit ${args.limit})` : "" };
   };
 
-  registerIfOwned("read", () => {
-    registerRuntimeTool(pi, {
-      name: "read",
-      label: "read",
-      ...createBuiltinToolBase("read"),
-      renderCall(args, theme) {
-        return renderReadDisplayCall(args, theme);
-      },
-      renderResult(result, options, theme) {
-        return renderReadDisplayResult(result, options, getConfig(), theme);
-      },
-    });
+  registerBuiltInRenderers("read", {
+    renderCall(args, theme) {
+      return renderReadDisplayCall(args, theme);
+    },
+    renderResult(result, options, theme) {
+      return renderReadDisplayResult(result, options, getConfig(), theme);
+    },
   });
 
-  registerIfOwned("grep", () => {
-    registerRuntimeTool(pi, {
-      name: "grep",
-    label: "grep",
-    ...createBuiltinToolBase("grep"),
+  registerBuiltInRenderers("grep", {
     renderCall(args, theme) {
       const scope = getSearchScope(args);
       const globSuffix = args.glob ? ` (${args.glob})` : "";
@@ -1890,14 +1640,9 @@ export function registerToolDisplayOverrides(
     renderResult(result, options, theme) {
       return renderSearchToolResult(result, options, theme, "match", "matches");
     },
-    });
   });
 
-  registerIfOwned("find", () => {
-    registerRuntimeTool(pi, {
-      name: "find",
-    label: "find",
-    ...createBuiltinToolBase("find"),
+  registerBuiltInRenderers("find", {
     renderCall(args, theme) {
       const { scope, limitSuffix } = buildSearchCallSuffix(args);
       return formatSearchCallLine("find", args.pattern as string, ` in ${scope}${limitSuffix}`, theme);
@@ -1905,14 +1650,9 @@ export function registerToolDisplayOverrides(
     renderResult(result, options, theme) {
       return renderSearchToolResult(result, options, theme, "result");
     },
-    });
   });
 
-  registerIfOwned("ls", () => {
-    registerRuntimeTool(pi, {
-      name: "ls",
-    label: "ls",
-    ...createBuiltinToolBase("ls"),
+  registerBuiltInRenderers("ls", {
     renderCall(args, theme) {
       const { scope, limitSuffix } = buildSearchCallSuffix(args);
       const rawScope = (args.path as string) || ".";
@@ -1921,73 +1661,19 @@ export function registerToolDisplayOverrides(
     renderResult(result, options, theme) {
       return renderSearchToolResult(result, options, theme, "entry", "entries");
     },
-    });
   });
 
-  registerIfOwned("edit", () => {
-    registerRuntimeTool(pi, {
-      name: "edit",
-    label: "edit",
-    description: bootstrapTools.edit.description,
-    ...builtInPromptMetadata.edit,
-    parameters: clonedParameters.edit,
+  registerBuiltInRenderers("edit", {
     renderShell: "default",
-    prepareArguments: getToolPrepareArguments(bootstrapTools.edit),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return getBuiltInTools(ctx.cwd).edit.execute(
-        toolCallId,
-        params as never,
-        signal,
-        onUpdate as never,
-      );
-    },
     renderCall(args, theme, context) {
       return renderEditDisplayCall(args, theme, context, {}, getConfig);
     },
     renderResult(result, options, theme, context) {
       return renderEditDisplayResult(result as never, options, theme, context, {}, getConfig);
     },
-    });
   });
 
-  registerIfOwned("write", () => {
-    registerRuntimeTool(pi, {
-      name: "write",
-    label: "write",
-    description: bootstrapTools.write.description,
-    ...builtInPromptMetadata.write,
-    parameters: clonedParameters.write,
-    prepareArguments: getToolPrepareArguments(bootstrapTools.write),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const config = getConfig();
-      const previous = captureExistingWriteContent(ctx.cwd, params.path, {
-        allowExternalDiffPreviews: config.allowExternalDiffPreviews,
-      });
-      recordWriteExecutionMeta(writeExecutionMetaByToolCallId, toolCallId, {
-        fileExistedBeforeWrite: previous.existed,
-        previousContent: previous.content,
-      });
-
-      const result = await getBuiltInTools(ctx.cwd).write.execute(
-        toolCallId,
-        params as never,
-        signal,
-        onUpdate as never,
-      );
-
-      // Codemode diff feature: when this write runs nested inside a codemode
-      // script, record a display diff for the codemode call's File changes
-      // section. Diff computation must never alter the write's outcome.
-      if (codemodeWriteObserver?.isNested(toolCallId) && typeof params.path === "string") {
-        try {
-          codemodeWriteObserver.record(toolCallId, params.path, previous, getToolContentArg(params) ?? "");
-        } catch {
-          // A failed diff capture must not fail the write.
-        }
-      }
-
-      return result;
-    },
+  registerBuiltInRenderers("write", {
     renderCall(args, theme, context) {
       const content = getToolContentArg(args);
       const lineCount = countWriteContentLines(content);
@@ -2041,14 +1727,9 @@ export function registerToolDisplayOverrides(
         fallbackText,
       );
     },
-    });
   });
 
-  registerIfOwned("bash", () => {
-    registerRuntimeTool(pi, {
-      name: "bash",
-    label: "bash",
-    ...createBuiltinToolBase("bash"),
+  registerBuiltInRenderers("bash", {
     renderCall(args, theme, context) {
       const config = getConfig();
       return renderBashCall(args, theme, context as never, {
@@ -2127,7 +1808,6 @@ export function registerToolDisplayOverrides(
       }
       return rendered;
     },
-    });
   });
 
   const decoratedCustomTools = new WeakSet<RuntimeToolDefinition>();
@@ -2334,11 +2014,11 @@ export function registerToolDisplayOverrides(
     registerToolRenderer.call(pi as PiWithToolRendererChain, (toolName, next) => {
       const config = getConfig();
       const ours = capturedBuiltInRenderers.get(toolName as BuiltInToolOverrideName);
-      if (ours && config.registerToolOverrides[toolName as BuiltInToolOverrideName]) {
+      if (ours && !config.disableEnhancedToolRender[toolName as BuiltInToolOverrideName]) {
         return { ...next(), ...ours };
       }
 
-      // A built-in the user turned off keeps the owner's native renderer; the
+      // A disabled built-in keeps the owner's native renderer; the
       // wildcard must never hijack a built-in (that would silently replace
       // e.g. pi-diff's edit rendering with the generic one).
       if (isBuiltInToolName(toolName)) {
@@ -2403,13 +2083,13 @@ export function registerToolDisplayOverrides(
 
   pi.on("session_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
-    resolvePendingBuiltInToolOwnership();
+    pendingWriteCaptures.clear();
     registerMcpToolOverrides();
     scheduleMcpToolOverrideDiscovery();
   });
   pi.on("before_agent_start", async () => {
     clearWriteExecutionMeta(writeExecutionMetaByToolCallId);
-    resolvePendingBuiltInToolOwnership();
+    pendingWriteCaptures.clear();
     // No retry timers here: before_agent_start fires on every user turn and the
     // 25/75/150/300 ms timers would accumulate across the session. The
     // registerTool interceptor catches late MCP registrations, and the direct
