@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.10.24-r4] - 2026-10-24
+
+### Added
+
+- **Bash intent settings are now exposed in `/tool-display`.** `bashIntentMode`, `bashIntentShowCommand`, and `bashCommandMaxChars` were previously config-file-only options documented in the README; the settings dialog now lists them as *Bash intent headers* (`off` | `render` | `render-and-instruct`), *Bash intent command suffix* (`on`/`off`), and *Bash command width limit* (`0`/`40`/`60`/`80`/`120`/`200`), each with an inspector panel and search terms. `/tool-display show` reports the active mode as `bashIntent=<mode>`.
+
 ## [2026.10.24-r3] - 2026-10-24
 
 ### Changed

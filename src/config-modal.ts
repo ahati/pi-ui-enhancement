@@ -66,6 +66,8 @@ interface ModalOverlayOptions {
 
 const PREVIEW_LINE_VALUES = ["4", "8", "12", "20", "40"] as const;
 const BASH_PREVIEW_LINE_VALUES = ["0", "5", "10", "20", "40"] as const;
+const BASH_COMMAND_MAX_CHARS_VALUES = ["0", "40", "60", "80", "120", "200"] as const;
+const BASH_INTENT_MODE_VALUES = ["off", "render", "render-and-instruct"] as const;
 const PRESET_COMMAND_HINT = TOOL_DISPLAY_PRESETS.join("|");
 
 function toOnOff(value: boolean): string {
@@ -94,6 +96,7 @@ function summarizeConfig(config: ToolDisplayConfig, capabilities: ToolDisplayCap
 		`expandedMax=${config.expandedPreviewMaxLines}`,
 		`bash=${config.bashOutputMode}`,
 		`bashLines=${config.bashCollapsedLines}`,
+		`bashIntent=${config.bashIntentMode}`,
 		`diff=${config.diffViewMode}/${config.diffIndicatorMode}@${config.diffSplitMinWidth}`,
 		`diffLines=${config.diffCollapsedLines}`,
 		`diffWrap=${toOnOff(config.diffWordWrap)}`,
@@ -402,6 +405,68 @@ function buildInspectorSettings(
 			searchTerms: ["bash", "collapsed", "lines", "stdout", "zero"],
 		},
 		{
+			id: "bashIntentMode",
+			label: "Bash intent headers",
+			currentValue: config.bashIntentMode,
+			values: [...BASH_INTENT_MODE_VALUES],
+			inspectorTitle: "Bash Intent Headers",
+			inspectorSummary: [
+				"Renders leading `# intent:` / `# tool:` comment lines as the bash call header instead of the raw command.",
+				"The comments are ordinary shell comments: the renderer strips them for display and they are never executed.",
+			],
+			inspectorOptions: [
+				"off — show the raw command in the header",
+				"render — comment lines become the header: 🔧 tool · intent",
+				"render-and-instruct — render, plus teach the model the convention via the system prompt",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"render-and-instruct appends a guideline to the system prompt; the guideline is injected once and survives chained before_agent_start handlers.",
+				"Without a `# tool:` comment the header label falls back to the program derived from the command (wrappers like sudo/cd are skipped).",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["bash", "intent", "tool", "comment", "header", "command"],
+		},
+		{
+			id: "bashIntentShowCommand",
+			label: "Bash intent command suffix",
+			currentValue: toOnOff(config.bashIntentShowCommand),
+			values: ["off", "on"],
+			inspectorTitle: "Bash Intent Command Suffix",
+			inspectorSummary: [
+				"Appends the stripped command after the rendered intent header on one line, for provenance.",
+				"Requires Bash intent headers to be on. Expanding a call with Ctrl+O shows the full command instead, so the command never appears twice.",
+			],
+			inspectorOptions: [
+				"off — header shows only the intent",
+				"on — header ends with the muted one-line command",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Line breaks in the command are collapsed to single spaces in the suffix.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["bash", "intent", "command", "suffix", "provenance"],
+		},
+		{
+			id: "bashCommandMaxChars",
+			label: "Bash command width limit",
+			currentValue: String(config.bashCommandMaxChars),
+			values: [...BASH_COMMAND_MAX_CHARS_VALUES],
+			inspectorTitle: "Bash Command Width Limit",
+			inspectorSummary: [
+				"Truncates the bash call's displayed command to a single line of at most N characters, with an ellipsis.",
+				"Line breaks are collapsed to ` ; ` separators first, so long multi-line commands stop wrapping across many terminal rows.",
+			],
+			inspectorOptions: [
+				"0 — keep the full command (default)",
+				"40/60/80/120/200 — progressively shorter one-line limits",
+			],
+			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
+				"Accepted manual range: 0 to 2000 characters. Applies to the collapsed header regardless of intent mode.",
+			]),
+			inspectorPath: configPath,
+			searchTerms: ["bash", "command", "truncate", "width", "chars", "wrap"],
+		},
+		{
 			id: "diffViewMode",
 			label: "Edit diff layout",
 			currentValue: config.diffViewMode,
@@ -662,6 +727,21 @@ function applySetting(config: ToolDisplayConfig, id: string, value: string): Too
 			return {
 				...config,
 				bashCollapsedLines: parseNumber(value, config.bashCollapsedLines),
+			};
+		case "bashIntentMode":
+			return {
+				...config,
+				bashIntentMode: value as ToolDisplayConfig["bashIntentMode"],
+			};
+		case "bashIntentShowCommand":
+			return {
+				...config,
+				bashIntentShowCommand: value === "on",
+			};
+		case "bashCommandMaxChars":
+			return {
+				...config,
+				bashCommandMaxChars: parseNumber(value, config.bashCommandMaxChars),
 			};
 		case "diffViewMode":
 			return {
