@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import type {
   BashToolDetails,
   EditToolDetails,
@@ -22,6 +23,9 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+// Namespace import on purpose: hyperlink/getCapabilities are only probed at
+// call time so the extension still loads on Pi hosts whose pi-tui predates them.
+import * as PiTui from "@earendil-works/pi-tui";
 import { resolvePiAgentDir } from "./agent-dir.js";
 import { renderBashCall, toStateCarrier } from "./bash-display.js";
 import { logToolDisplayDebug } from "./debug-logger.js";
@@ -491,6 +495,24 @@ function getNumericField(value: unknown, field: string): number | undefined {
 
 function getToolPathArg(value: unknown): string | undefined {
   return getStringField(value, "file_path") ?? getStringField(value, "path");
+}
+
+// OSC 8 file link for call-row paths, mirroring Pi's own linkPath
+// (core/tools/render-utils.js): the styled text is wrapped in a file:// URL
+// when the terminal supports hyperlinks; otherwise it passes through untouched.
+// Resolves against the host process cwd (relative tool paths are rare; absolute
+// is the norm) with an optional cwd for future call-site threading.
+function linkToolPath(rawPath: string | undefined, styledPath: string, cwd?: string): string {
+  const caps = PiTui.getCapabilities?.();
+  const hyperlinkFn = PiTui.hyperlink;
+  if (!rawPath || typeof hyperlinkFn !== "function" || !caps?.hyperlinks) {
+    return styledPath;
+  }
+  try {
+    return hyperlinkFn(styledPath, pathToFileURL(resolve(cwd ?? process.cwd(), rawPath)).href);
+  } catch {
+    return styledPath;
+  }
 }
 
 function getToolContentArg(value: unknown): string | undefined {
@@ -1404,7 +1426,8 @@ function renderReadDisplayCall(
   theme: RenderTheme,
   adapter: ToolDisplayAdapter = {},
  ): Text {
-  const path = shortenPath(getAdapterPath(args, adapter));
+  const rawPath = getAdapterPath(args, adapter);
+  const path = shortenPath(rawPath);
   const offset = getNumericField(args, "offset");
   const limit = getNumericField(args, "limit");
   let suffix = "";
@@ -1413,7 +1436,7 @@ function renderReadDisplayCall(
     const to = limit !== undefined ? from + limit - 1 : undefined;
     suffix = to ? `:${from}-${to}` : `:${from}`;
   }
-  const line = `${theme.fg("toolTitle", theme.bold("read"))} ${theme.fg("accent", path || "...")}${theme.fg("warning", suffix)}`;
+  const line = `${theme.fg("toolTitle", theme.bold("read"))} ${linkToolPath(rawPath, theme.fg("accent", path || "..."))}${theme.fg("warning", suffix)}`;
   return textResult(line);
 }
 
@@ -1465,9 +1488,10 @@ function renderEditDisplayCall(
   adapter: ToolDisplayAdapter = {},
   getConfig: ConfigGetter,
  ): Text | Container {
-  const path = shortenPath(getAdapterPath(args, adapter));
+  const rawPath = getAdapterPath(args, adapter);
+  const path = shortenPath(rawPath);
   const lineCount = adapter.getEditLineCount?.(args) ?? getEditLineCount(args);
-  const summaryText = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", path || "...")}${formatLineCountSuffix(lineCount, theme)}`;
+  const summaryText = `${theme.fg("toolTitle", theme.bold("edit"))} ${linkToolPath(rawPath, theme.fg("accent", path || "..."))}${formatLineCountSuffix(lineCount, theme)}`;
   if (!context?.argsComplete || !context.isPartial) {
     return textResult(summaryText);
   }
@@ -1891,7 +1915,8 @@ export function registerToolDisplayOverrides(
     ...createBuiltinToolBase("ls"),
     renderCall(args, theme) {
       const { scope, limitSuffix } = buildSearchCallSuffix(args);
-      return formatSearchCallLine("ls", scope, limitSuffix, theme);
+      const rawScope = (args.path as string) || ".";
+      return textResult(`${theme.fg("toolTitle", theme.bold("ls"))} ${linkToolPath(rawScope, theme.fg("accent", scope))}${theme.fg("muted", limitSuffix)}`);
     },
     renderResult(result, options, theme) {
       return renderSearchToolResult(result, options, theme, "entry", "entries");
@@ -1967,14 +1992,15 @@ export function registerToolDisplayOverrides(
       const content = getToolContentArg(args);
       const lineCount = countWriteContentLines(content);
       const sizeBytes = getWriteContentSizeBytes(content);
-      const path = shortenPath(getToolPathArg(args));
+      const rawPath = getToolPathArg(args);
+      const path = shortenPath(rawPath);
       const suffix = shouldRenderWriteCallSummary({
         hasContent: content !== undefined,
         hasDetailedResultHeader: false,
       })
         ? formatWriteCallSuffix(lineCount, sizeBytes, theme)
         : "";
-      const summaryText = `${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", path || "...")}${suffix}`;
+      const summaryText = `${theme.fg("toolTitle", theme.bold("write"))} ${linkToolPath(rawPath, theme.fg("accent", path || "..."))}${suffix}`;
       if (!context?.argsComplete || !context?.isPartial) {
         return textResult(summaryText);
       }
