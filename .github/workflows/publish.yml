@@ -53,6 +53,4 @@ jobs:
         # prereleases (2026.10.24-r1), and npm refuses to default a prerelease
         # to the latest dist-tag without it. These are primary releases, so
         # latest is correct.
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public --tag latest
