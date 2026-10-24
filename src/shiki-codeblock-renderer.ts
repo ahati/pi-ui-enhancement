@@ -250,7 +250,11 @@ function styleToken(token: ThemedToken, theme: MarkdownThemeLike): string {
 	return `${prefix}${token.content}\x1b[0m`;
 }
 
-function renderShikiLines(
+/**
+ * Exported for tests: cache identity (same array reference on repeat renders)
+ * is how the tests prove the memoization actually short-circuits.
+ */
+export function renderShikiLines(
 	code: string,
 	lang: string | undefined,
 	config: ToolDisplayConfig,
@@ -265,21 +269,50 @@ function renderShikiLines(
 		return undefined;
 	}
 
+	// The TUI re-renders unchanged fences on every keystroke; memoize per theme
+	// instance so repeat renders skip tokenization. Keyed weakly by the theme
+	// object (styleToken output depends on theme.codeBlock, so a new theme
+	// instance must never reuse entries) and by shiki theme name + lang + code
+	// inside. Failures are cached too: an unsupported grammar would otherwise
+	// re-throw on every render of the same fence.
+	const cacheable = code.length <= FENCE_HIGHLIGHT_MAX_CHARS && typeof theme === "object" && theme !== null;
+	const shikiTheme = getShikiTheme(config);
+	const cacheKey = `${shikiTheme}\0${lang}\0${code}`;
+	const themeCache = cacheable ? fenceHighlightCache.get(theme) : undefined;
+	if (themeCache?.has(cacheKey)) {
+		return themeCache.get(cacheKey);
+	}
+
+	let result: string[] | undefined;
 	try {
 		const resolvedLang = shiki.resolveLangAlias(lang);
 		const tokens = shiki.codeToTokensBase(code, {
 			lang: resolvedLang,
-			theme: getShikiTheme(config),
+			theme: shikiTheme,
 		});
-		return tokens.map((lineTokens) => {
+		result = tokens.map((lineTokens) => {
 			if (lineTokens.length === 0) {
 				return "";
 			}
 			return lineTokens.map((token) => styleToken(token, theme)).join("");
 		});
 	} catch {
-		return undefined;
+		result = undefined;
 	}
+
+	if (cacheable) {
+		let cache = fenceHighlightCache.get(theme);
+		if (!cache) {
+			cache = new Map();
+			fenceHighlightCache.set(theme, cache);
+		}
+		if (cache.size >= FENCE_HIGHLIGHT_CACHE_LIMIT) {
+			cache.clear();
+		}
+		cache.set(cacheKey, result);
+	}
+
+	return result;
 }
 
 function renderFallbackHighlightedLines(
@@ -303,6 +336,13 @@ export type ShikiDiffBlockHighlighter = (code: string) => string[] | undefined;
 const DIFF_BLOCK_MAX_CHARS = 24000;
 const DIFF_HIGHLIGHT_CACHE_LIMIT = 128;
 const diffBlockHighlightCache = new Map<string, string[] | undefined>();
+
+// Cache budget for whole-fence highlight results (see renderShikiLines). Capped
+// at the same per-input size as diff blocks; entry count is small because the
+// working set is "fences currently visible in the transcript".
+const FENCE_HIGHLIGHT_MAX_CHARS = DIFF_BLOCK_MAX_CHARS;
+const FENCE_HIGHLIGHT_CACHE_LIMIT = 64;
+const fenceHighlightCache = new WeakMap<object, Map<string, string[] | undefined>>();
 
 function styleDiffToken(token: ThemedToken): string {
 	const color = ansiColor(token.color);
