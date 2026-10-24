@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Dependency refresh: `diff` ^9.0.0 (verified rendering no-op for this code path), `shiki` ^4.5.0, dev dependencies on Pi 1.4.0 (`pi-coding-agent`/`pi-tui`), `typescript` 7.0.2, `tsx` 4.23.15.
+- Peer ranges for `@earendil-works/pi-coding-agent` / `@earendil-works/pi-tui` changed to `*` per the Pi packaging convention for host-provided packages. The previous curated range had two accidental holes (0.76.0 and the 0.81.0–0.99.2 line, which includes the codemode-era releases this extension supports) and an unbounded `>=1.0.0` arm.
+
 ### Docs
 - Installation now leads with the verified Git source, `pi install git:github.com/ahati/pi-ui-enhancement`, including the `pi update` command. The npm package is marked as not yet published (the badge no longer points at a nonexistent registry entry).
 

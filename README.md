@@ -69,7 +69,7 @@ Ported by hand from community forks, with the original authors credited:
 
 ### Fork maintenance
 
-Maintained by **ahati**. This covers the work that is not a single upstream patch: merging and conflict resolution across all ten pull requests, both community forks, and the cherry-picked fixes — each merge commit documents the decisions taken and what was dropped. On top of that the fork enables TypeScript strict mode across `src/` and `tests/`, rebrands the package to `pi-ui-enhancement` while still reading legacy `pi-tool-display` config paths, targets Pi 1.3 (dev dependencies on `1.3.0`, official `registerToolRenderer` preferred with the prototype patches kept as a 0.8x fallback), and records the full fork-mining survey in [FORK-NOTES.md](docs/FORK-NOTES.md).
+Maintained by **ahati**. This covers the work that is not a single upstream patch: merging and conflict resolution across all ten pull requests, both community forks, and the cherry-picked fixes — each merge commit documents the decisions taken and what was dropped. On top of that the fork enables TypeScript strict mode across `src/` and `tests/`, rebrands the package to `pi-ui-enhancement` while still reading legacy `pi-tool-display` config paths, targets Pi 1.4 (dev dependencies on `1.4.0`, official `registerToolRenderer` preferred with the prototype patches kept as a 0.8x fallback), and records the full fork-mining survey in [FORK-NOTES.md](docs/FORK-NOTES.md).
 
 ### Attribution
 
@@ -93,7 +93,7 @@ Maintained by **ahati**. This covers the work that is not a single upstream patc
 | maplezzk | fork cherry-pick | Usable global `enabled` switch |
 | williamcr01 | fork cherry-pick | Pi 1.x peer-range compatibility |
 | hyein-cbio | pi-codemode-diff | Edit/write diffs inside codemode calls |
-| ahati | this fork | Merge and conflict resolution, strict TypeScript, rebrand, Pi 1.3 targeting |
+| ahati | this fork | Merge and conflict resolution, strict TypeScript, rebrand, Pi 1.4 targeting |
 | MasuRii | pi-tool-display | Original project and base implementation |
 
 The original project is **MasuRii**'s `pi-tool-display`, and it remains the foundation of this package. Its earlier merged contributors — tuansondinh, w-winter, badboiririi, tynanbe, and dependabot — shaped the code this fork started from.
