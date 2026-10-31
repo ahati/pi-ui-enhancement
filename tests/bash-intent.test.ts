@@ -89,6 +89,10 @@ test("extractProgramName skips wrappers, their flags, and flag values", () => {
   assert.equal(extractProgramName("FOO=1 BAR=2 make build"), "make");
   assert.equal(extractProgramName("env -i /usr/bin/node server.js"), "node");
   assert.equal(extractProgramName("nohup /srv/bin/worker.sh &"), "worker.sh");
+  assert.equal(extractProgramName("nice -n 10 npm test"), "npm");
+  assert.equal(extractProgramName("nice -10 git status"), "git");
+  assert.equal(extractProgramName("ionice -c 3 python3 script.py"), "python3");
+  assert.equal(extractProgramName("nice -n 19 ionice -c 3 /usr/bin/make"), "make");
 });
 
 test("extractProgramName uses the basename of an absolute program path", () => {

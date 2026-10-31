@@ -759,6 +759,7 @@ test("renderBashCall renders a bare tool arg without intent", () => {
 	const text = renderBashCall({ command: "ls", tool: "file listing" }, createPassThroughTheme(), makeContext());
 	const out = renderedText(text);
 	assert.match(out, /file listing/);
+	assert.doesNotMatch(out, /·\s*$/);
 });
 
 test("renderBashCall renders the background badge with an optional task name", () => {
@@ -883,4 +884,22 @@ test("renderBashCall omits a literal-null taskId from management headers", () =>
 	const out = renderedText(text);
 	assert.match(out, /bash tasks · list$/);
 	assert.doesNotMatch(out, /null/);
+});
+
+test("renderBashCall drops leading cd . and cd $PWD", () => {
+	const textDot = renderBashCall(
+		{ command: "cd . && ls -la" },
+		createPassThroughTheme(),
+		makeContext({ cwd: "/workspace" }),
+	);
+	assert.doesNotMatch(renderedText(textDot), /cd \./);
+	assert.match(renderedText(textDot), /ls -la/);
+
+	const textPwd = renderBashCall(
+		{ command: 'cd "$PWD" && npm test' },
+		createPassThroughTheme(),
+		makeContext({ cwd: "/workspace" }),
+	);
+	assert.doesNotMatch(renderedText(textPwd), /cd "\$PWD"/);
+	assert.match(renderedText(textPwd), /npm test/);
 });

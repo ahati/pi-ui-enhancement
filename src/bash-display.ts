@@ -64,12 +64,13 @@ export interface BashCallRenderOptions {
 function stripDisplayCd(command: string, dirs: (string | undefined)[]): string {
 	const match = /^\s*cd\s+(?:"([^"]*)"|'([^']*)'|(\S+))(\s*&\s*&\s*)/.exec(command);
 	if (!match) return command;
-	const raw = (match[1] ?? match[2] ?? match[3] ?? "").replace(/\/+$/, "");
-	if (raw.length === 0) return command;
+	const raw = match[1] ?? match[2] ?? match[3] ?? "";
+	if (raw.length === 0 || raw === "...") return command;
+	const isDotOrPwd = raw === "." || raw === "$PWD" || raw === "\"$PWD\"" || raw === "'$PWD'";
+	const normalized = raw.replace(/\/+$/, "");
 	for (const dir of dirs) {
 		if (!dir) continue;
-		if (raw === "..." ) continue;
-		if (dir.replace(/\/+$/, "") === raw) {
+		if (isDotOrPwd || dir.replace(/\/+$/, "") === normalized) {
 			return command.slice(match.index + match[0].length).replace(/^\s*/, "") || command;
 		}
 	}
@@ -343,13 +344,18 @@ function buildIntentHeader(
 	// tell us without guessing.
 	const label = intent.tool ?? extractProgramName(stripped || args.command || "");
 	const separator = ` ${theme.fg("muted", "·")} `;
-	const intentText = theme.fg("accent", intent.intent);
+	const intentTrimmed = (intent.intent ?? "").trim();
+	const intentText = intentTrimmed.length > 0 ? theme.fg("accent", intentTrimmed) : "";
 
-	// Without a label (e.g. a command made only of `cd` calls) the icon stays but the
-	// separator goes, so the header never renders a dangling `🔧 ·`.
-	const head = label.length > 0
-		? `${toolIcon()} ${theme.fg("toolTitle", theme.bold(label))}${separator}${intentText}`
-		: `${toolIcon()} ${intentText}`;
+	// Avoid dangling separators if either label or intent is empty
+	const head =
+		label.length > 0 && intentText.length > 0
+			? `${toolIcon()} ${theme.fg("toolTitle", theme.bold(label))}${separator}${intentText}`
+			: label.length > 0
+				? `${toolIcon()} ${theme.fg("toolTitle", theme.bold(label))}`
+				: intentText.length > 0
+					? `${toolIcon()} ${intentText}`
+					: toolIcon();
 
 	// Expanded: the full command replaces the optional one-line suffix.
 	if (expanded) {
@@ -473,6 +479,6 @@ export function renderBashCall(
 	const elapsedMs = spinnerState?.startedAt !== undefined
 		? Date.now() - spinnerState.startedAt
 		: undefined;
-	text.setText(buildBashCallText(args, theme, options, context.expanded === true, spinnerFrame, elapsedMs));
+	text.setText(buildBashCallText(args, theme, options, context.expanded === true, spinnerFrame, elapsedMs, displayCommand));
 	return text;
 }

@@ -1729,6 +1729,32 @@ export function registerToolDisplayOverrides(
     },
   });
 
+function isBackgroundTaskResult(
+  result: Record<string, unknown>,
+  context?: ToolRenderContextLike,
+): boolean {
+  const args = context?.args as Record<string, unknown> | undefined;
+  if (args?.background === true) return true;
+  if (
+    typeof args?.taskAction === "string" &&
+    args.taskAction.trim() !== "" &&
+    args.taskAction !== "null" &&
+    args.taskAction !== "undefined"
+  ) {
+    return true;
+  }
+  const details = result.details as Record<string, unknown> | undefined;
+  if (
+    details &&
+    typeof details.id === "string" &&
+    details.id.startsWith("task-") &&
+    typeof details.status === "string"
+  ) {
+    return true;
+  }
+  return false;
+}
+
   registerBuiltInRenderers("bash", {
     renderCall(args, theme, context) {
       const config = getConfig();
@@ -1754,6 +1780,12 @@ export function registerToolDisplayOverrides(
         rendered = renderBashLivePreview(rawOutput, options, config, theme, details, cachedComponent);
       } else if (isToolError(result, context)) {
         rendered = renderBashErrorResult(rawOutput, options, config, theme, details, cachedComponent);
+      } else if (isBackgroundTaskResult(result, context)) {
+        const lines = prepareOutputLines(rawOutput, options);
+        const text = lines.length === 0
+          ? theme.fg("muted", "↳ (no output)")
+          : lines.map((line) => theme.fg("toolOutput", sanitizeAnsiForThemedOutput(line))).join("\n");
+        rendered = reuseTextComponent(text, cachedComponent);
       } else {
         const lines = prepareOutputLines(rawOutput, options);
 

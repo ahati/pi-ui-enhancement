@@ -30,7 +30,7 @@ export const BASH_INTENT_GUIDELINE = [
 type IntentConfig = Pick<ToolDisplayConfig, "bashIntentMode" | "disableEnhancedToolRender">;
 
 /** Wrapper programs that should not become the displayed program name. */
-const WRAPPER_COMMANDS = new Set(["sudo", "doas", "env", "nohup", "command", "exec", "time"]);
+const WRAPPER_COMMANDS = new Set(["sudo", "doas", "env", "nohup", "command", "exec", "time", "nice", "ionice"]);
 
 /**
  * Flags that consume the following token as their value, per wrapper. Without
@@ -45,6 +45,8 @@ const WRAPPER_VALUE_FLAGS: Record<string, readonly string[]> = {
 	command: ["-p", "-v"],
 	exec: ["-a"],
 	nohup: [],
+	nice: ["-n", "--adjustment"],
+	ionice: ["-c", "--class", "-n", "--classdata", "-p", "--pid"],
 };
 
 /** A leading `VAR=value` assignment, which is not the program being run. */

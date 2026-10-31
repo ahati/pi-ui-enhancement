@@ -440,3 +440,47 @@ test("bash renderResult reuses one Text component across partial updates", () =>
 	assert.ok(first instanceof Object, "partial render returns a component");
 	assert.equal(second, first, "the same Text instance is reused via context.state");
 });
+
+test("bash renderResult does not collapse or summarize background tasks or taskAction calls", () => {
+	const { api, rendererResolvers } = createExtensionApiStub();
+	registerToolDisplayOverrides(api, () => ({
+		...DEFAULT_TOOL_DISPLAY_CONFIG,
+		bashOutputMode: "summary",
+		bashCollapsedLines: 0,
+	}));
+
+	const resolver = rendererResolvers[0];
+	const bashEntry = resolver("bash", () => undefined);
+	const bashTool = { name: "bash", ...(bashEntry ?? {}) } as RegisteredToolLike;
+
+	const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+
+	// 1. Background task start
+	const bgRes = bashTool.renderResult!(
+		{
+			content: [{ type: "text", text: "Tool is running as a background task with task id: task-1\nOutput: /tmp/log\nDo not poll." }],
+			details: { id: "task-1", status: "running" },
+		} as never,
+		{ isPartial: false, expanded: false } as never,
+		theme as never,
+		{ args: { command: "sleep 10", background: true } } as never,
+	) as { text?: string };
+
+	assert.match(String(bgRes?.text ?? ""), /Tool is running as a background task with task id: task-1/);
+	assert.doesNotMatch(String(bgRes?.text ?? ""), /output hidden/);
+	assert.doesNotMatch(String(bgRes?.text ?? ""), /more lines/);
+
+	// 2. taskAction call
+	const actionRes = bashTool.renderResult!(
+		{
+			content: [{ type: "text", text: "task-1  sleep 10  running  (started 12:00:00)" }],
+			details: { id: "task-1", status: "running" },
+		} as never,
+		{ isPartial: false, expanded: false } as never,
+		theme as never,
+		{ args: { taskAction: "list" } } as never,
+	) as { text?: string };
+
+	assert.match(String(actionRes?.text ?? ""), /task-1\s+sleep 10\s+running/);
+	assert.doesNotMatch(String(actionRes?.text ?? ""), /output hidden/);
+});
