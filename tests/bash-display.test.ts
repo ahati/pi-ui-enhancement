@@ -840,3 +840,35 @@ test("renderBashCall hides taskName/cwd junk values", () => {
 	assert.doesNotMatch(out, /· null/);
 	assert.doesNotMatch(out, /cwd: null/);
 });
+
+test("renderBashCall drops a redundant leading cd to the tool cwd for display", () => {
+	const text = renderBashCall(
+		{ command: "cd /workspace/x && git status --short" },
+		createPassThroughTheme(),
+		makeContext({ cwd: "/workspace/x" }),
+	);
+	const out = renderedText(text);
+	assert.doesNotMatch(out, /cd \/workspace\/x/);
+	assert.match(out, /git status --short/);
+});
+
+test("renderBashCall keeps a cd to a different directory", () => {
+	const text = renderBashCall(
+		{ command: "cd /tmp && ls" },
+		createPassThroughTheme(),
+		makeContext({ cwd: "/workspace/x" }),
+	);
+	const out = renderedText(text);
+	assert.match(out, /cd \/tmp && ls/);
+});
+
+test("renderBashCall strips the cd prefix in the expanded view too", () => {
+	const text = renderBashCall(
+		{ command: "cd /workspace/x && npm test", cwd: "/workspace/x" },
+		createPassThroughTheme(),
+		makeContext({ expanded: true, cwd: "/workspace/x" }),
+	);
+	const out = renderedText(text);
+	assert.doesNotMatch(out, /cd \/workspace\/x &&/);
+	assert.match(out, /npm test/);
+});

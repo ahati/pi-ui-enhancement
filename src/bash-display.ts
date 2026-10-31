@@ -55,6 +55,27 @@ export interface BashCallRenderOptions {
  * Optional display params sometimes arrive as junk — models emit literal
  * "null"/"undefined" strings for absent optionals. Treat those as absent.
  */
+/**
+ * Drop a redundant leading `cd <dir> &&` for DISPLAY (PRD-004 §4.1): models
+ * often emit `cd <workspace> && …` although the tool already runs there.
+ * Only an exact match against one of `dirs` (after unquoting and trailing-
+ * slash normalization) is stripped; other `cd`s are meaningful and kept.
+ */
+function stripDisplayCd(command: string, dirs: (string | undefined)[]): string {
+	const match = /^\s*cd\s+(?:"([^"]*)"|'([^']*)'|(\S+))(\s*&\s*&\s*)/.exec(command);
+	if (!match) return command;
+	const raw = (match[1] ?? match[2] ?? match[3] ?? "").replace(/\/+$/, "");
+	if (raw.length === 0) return command;
+	for (const dir of dirs) {
+		if (!dir) continue;
+		if (raw === "..." ) continue;
+		if (dir.replace(/\/+$/, "") === raw) {
+			return command.slice(match.index + match[0].length).replace(/^\s*/, "") || command;
+		}
+	}
+	return command;
+}
+
 function cleanOptionalText(value: unknown): string {
 	if (typeof value !== "string") return "";
 	const trimmed = value.trim();
@@ -82,6 +103,8 @@ interface BashSpinnerStateCarrier {
 }
 
 interface BashCallRenderContextLike {
+	/** Working directory for this tool execution (ToolRenderContext.cwd). */
+	cwd?: string;
 	executionStarted: boolean;
 	isPartial: boolean;
 	expanded?: boolean;
@@ -347,6 +370,7 @@ function buildBashCallText(
 	expanded?: boolean,
 	spinnerFrame?: string,
 	elapsedMs?: number,
+	displayCommand?: string,
 ): string {
 	// Management calls (taskAction) render a dedicated header — there is no
 	// command to display. Only known actions qualify; junk values (models
@@ -363,8 +387,9 @@ function buildBashCallText(
 		return `${spinnerPrefix}${toolIcon()} ${theme.fg("toolTitle", theme.bold("bash tasks"))} ${theme.fg("muted", "·")} ${detail}${elapsedSuffix}`;
 	}
 
-	const commandDisplay = buildCommandDisplay(args, options?.maxCommandChars);
-	const intentHeader = buildIntentHeader(args, theme, options, expanded);
+	const commandArgs = displayCommand !== undefined ? { ...args, command: displayCommand } : args;
+	const commandDisplay = buildCommandDisplay(commandArgs, options?.maxCommandChars);
+	const intentHeader = buildIntentHeader(commandArgs, theme, options, expanded);
 	const shellSuffix =
 		typeof args.shellPath === "string" &&
 		args.shellPath.trim().length > 0 &&
@@ -400,6 +425,10 @@ export function renderBashCall(
 	context: BashCallRenderContextLike,
 	options?: BashCallRenderOptions,
 ): Text {
+	// Display copy of the command: redundant `cd <cwd> &&` stripped (execution
+	// already runs in that directory — the header should read the real work).
+	const displayDirs = [context.cwd, cleanOptionalText(args.cwd)];
+	const displayCommand = stripDisplayCd(typeof args.command === "string" ? args.command : "", displayDirs);
 	const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
 	const carrier = toStateCarrier(context.state);
 	const toolCallId = getToolCallId(context);
@@ -408,7 +437,7 @@ export function renderBashCall(
 
 	if (!shouldSpin) {
 		stopSpinner(toolCallId, spinnerState);
-		text.setText(buildBashCallText(args, theme, options, context.expanded === true));
+		text.setText(buildBashCallText(args, theme, options, context.expanded === true, undefined, undefined, displayCommand));
 		return text;
 	}
 
@@ -425,6 +454,7 @@ export function renderBashCall(
 						context.expanded === true,
 						BASH_SPINNER_FRAMES[spinnerState.frameIndex],
 						Date.now() - (spinnerState.startedAt ?? Date.now()),
+						displayCommand,
 					),
 				);
 				context.invalidate?.();
