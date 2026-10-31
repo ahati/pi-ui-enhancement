@@ -806,3 +806,14 @@ test("renderBashCall hides the cwd line when collapsed", () => {
 	);
 	assert.doesNotMatch(renderedText(text), /cwd:/);
 });
+
+test("renderBashCall ignores junk taskAction values (null/unknown) — renders the command", () => {
+	const text = renderBashCall(
+		{ command: "echo hi", taskAction: "null" as unknown as string, taskId: "null" as unknown as string },
+		createPassThroughTheme(),
+		makeContext(),
+	);
+	const out = renderedText(text);
+	assert.match(out, /echo hi/);
+	assert.doesNotMatch(out, /bash tasks/);
+});
