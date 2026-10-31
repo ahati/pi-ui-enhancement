@@ -14,6 +14,7 @@ interface BashCallRenderTheme {
 }
 
 interface BashCallRenderContextLike {
+	cwd?: string;
 	executionStarted: boolean;
 	isPartial: boolean;
 	expanded?: boolean;
