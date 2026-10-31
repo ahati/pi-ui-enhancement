@@ -817,3 +817,26 @@ test("renderBashCall ignores junk taskAction values (null/unknown) — renders t
 	assert.match(out, /echo hi/);
 	assert.doesNotMatch(out, /bash tasks/);
 });
+
+test("renderBashCall treats literal null/undefined intent+tool strings as absent", () => {
+	const text = renderBashCall(
+		{ command: "mkdir -p sub", intent: "null", tool: "null" },
+		createPassThroughTheme(),
+		makeContext(),
+	);
+	const out = renderedText(text);
+	assert.doesNotMatch(out, /null/);
+	assert.match(out, /mkdir -p sub/);
+});
+
+test("renderBashCall hides taskName/cwd junk values", () => {
+	const text = renderBashCall(
+		{ command: "sleep 5", background: true, taskName: "null", cwd: "null" },
+		createPassThroughTheme(),
+		makeContext({ expanded: true }),
+	);
+	const out = renderedText(text);
+	assert.match(out, /⏾ background/);
+	assert.doesNotMatch(out, /· null/);
+	assert.doesNotMatch(out, /cwd: null/);
+});

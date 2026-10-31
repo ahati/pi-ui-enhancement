@@ -51,6 +51,17 @@ export interface BashCallRenderOptions {
 	maxCommandChars?: number;
 }
 
+/**
+ * Optional display params sometimes arrive as junk — models emit literal
+ * "null"/"undefined" strings for absent optionals. Treat those as absent.
+ */
+function cleanOptionalText(value: unknown): string {
+	if (typeof value !== "string") return "";
+	const trimmed = value.trim();
+	if (trimmed === "" || trimmed === "null" || trimmed === "undefined") return "";
+	return value;
+}
+
 const INTENT_COMMENT_PATTERN = /^\s*#\s*intent\s*:\s*(.+?)\s*$/i;
 const TOOL_COMMENT_PATTERN = /^\s*#\s*tool\s*:\s*(.+?)\s*$/i;
 
@@ -233,8 +244,9 @@ function resolveIntentDisplay(
 ): { intent: string; tool?: string; strippedCommand?: string } | undefined {
 	// Explicit `intent`/`tool` arguments are structured tool data — they render
 	// regardless of intentMode (which gates only leading-comment parsing).
-	const alwaysIntent = typeof args.intent === "string" ? args.intent.trim() : "";
-	const alwaysTool = typeof args.tool === "string" ? args.tool.trim() : "";
+	// Junk values ("null"/"undefined" strings) count as absent here too.
+	const alwaysIntent = cleanOptionalText(args.intent);
+	const alwaysTool = cleanOptionalText(args.tool);
 	if (!options || options.intentMode === undefined || options.intentMode === "off") {
 		if (alwaysIntent.length > 0 || alwaysTool.length > 0) {
 			return { intent: alwaysIntent, tool: alwaysTool.length > 0 ? alwaysTool : undefined };
@@ -248,11 +260,11 @@ function resolveIntentDisplay(
 	// An explicit `intent`/`description` argument overrides the comment's intent
 	// text; an explicit `tool` argument overrides the comment's label. The
 	// stripped command still applies when it came from a comment.
-	const explicitIntent =
-		(typeof args.intent === "string" && args.intent.trim()) ||
-		(typeof args.description === "string" && args.description.trim()) ||
-		"";
-	const explicitTool = typeof args.tool === "string" ? args.tool.trim() : "";
+	// An explicit `intent`/`description` argument overrides the comment's intent
+	// text; an explicit `tool` argument overrides the comment's label. Junk
+	// values ("null"/"undefined" strings) count as absent.
+	const explicitIntent = cleanOptionalText(args.intent) || cleanOptionalText(args.description);
+	const explicitTool = cleanOptionalText(args.tool);
 	const intent = explicitIntent.length > 0 ? explicitIntent : parsed.intent;
 	const tool = explicitTool.length > 0 ? explicitTool : parsed.tool;
 	// Original rule for parsed comments: an intent is required (a bare `# tool:`
@@ -362,11 +374,9 @@ function buildBashCallText(
 	const timeoutSuffix = args.timeout
 		? theme.fg("muted", ` (timeout ${args.timeout}s)`)
 		: "";
+	const taskNameDisplay = cleanOptionalText(args.taskName);
 	const backgroundSuffix = args.background
-		? theme.fg(
-				"muted",
-				` ⏾ background${typeof args.taskName === "string" && args.taskName.trim().length > 0 ? ` · ${args.taskName.trim()}` : ""}`,
-		  )
+		? theme.fg("muted", ` ⏾ background${taskNameDisplay ? ` · ${taskNameDisplay}` : ""}`)
 		: "";
 	const spinnerPrefix = spinnerFrame ? `${theme.fg("warning", `${spinnerFrame} `)}` : "";
 	const elapsedSuffix =
@@ -379,10 +389,8 @@ function buildBashCallText(
 	// expanded command body appended by buildIntentHeader.
 	const [head, ...rest] = prompt.split("\n");
 	const tail = rest.length > 0 ? `\n${rest.join("\n")}` : "";
-	const cwdLine =
-		expanded && typeof args.cwd === "string" && args.cwd.trim().length > 0
-			? `\n${theme.fg("muted", `cwd: ${args.cwd.trim()}`)}`
-			: "";
+	const cwdDisplay = cleanOptionalText(args.cwd);
+	const cwdLine = expanded && cwdDisplay ? `\n${theme.fg("muted", `cwd: ${cwdDisplay.trim()}`)}` : "";
 	return `${spinnerPrefix}${head}${shellSuffix}${timeoutSuffix}${backgroundSuffix}${elapsedSuffix}${tail}${cwdLine}`;
 }
 
