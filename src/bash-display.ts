@@ -377,7 +377,7 @@ function buildBashCallText(
 	// sometimes emit "null") fall through to the ordinary command rendering.
 	const KNOWN_TASK_ACTIONS = new Set(["list", "status", "kill", "input", "adopt"]);
 	if (typeof args.taskAction === "string" && KNOWN_TASK_ACTIONS.has(args.taskAction.trim())) {
-		const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "";
+		const taskId = cleanOptionalText(args.taskId);
 		const detail = theme.fg("accent", `${args.taskAction.trim()}${taskId ? ` ${taskId}` : ""}`);
 		const spinnerPrefix = spinnerFrame ? `${theme.fg("warning", `${spinnerFrame} `)}` : "";
 		const elapsedSuffix =

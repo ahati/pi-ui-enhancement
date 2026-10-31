@@ -873,3 +873,14 @@ test("renderBashCall strips the cd prefix in the expanded view too", () => {
 	assert.doesNotMatch(out, /cd \/workspace\/x &&/);
 	assert.match(out, /npm test/);
 });
+
+test("renderBashCall omits a literal-null taskId from management headers", () => {
+	const text = renderBashCall(
+		{ taskAction: "list", taskId: "null" },
+		createPassThroughTheme(),
+		makeContext(),
+	);
+	const out = renderedText(text);
+	assert.match(out, /bash tasks · list$/);
+	assert.doesNotMatch(out, /null/);
+});
