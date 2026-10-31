@@ -12,6 +12,20 @@ interface BashCallArgs {
 	command?: string;
 	commandPrefix?: string;
 	description?: string;
+	/** Explicit intent text — overrides a leading `# intent:` comment. */
+	intent?: string;
+	/** Explicit header label — overrides a leading `# tool:` comment. */
+	tool?: string;
+	/** Background-task marker: renders a `⏾ background` badge in the header. */
+	background?: boolean;
+	/** Optional task label shown next to the background badge. */
+	taskName?: string;
+	/** Working directory — shown as a `cwd:` line in the expanded view. */
+	cwd?: string;
+	/** Management mode: renders a `bash tasks <action>` header instead of a command. */
+	taskAction?: string;
+	/** Task id for management calls. */
+	taskId?: string;
 	shellPath?: string;
 	timeout?: number;
 }
@@ -217,22 +231,37 @@ function resolveIntentDisplay(
 	args: BashCallArgs,
 	options: BashCallRenderOptions | undefined,
 ): { intent: string; tool?: string; strippedCommand?: string } | undefined {
+	// Explicit `intent`/`tool` arguments are structured tool data — they render
+	// regardless of intentMode (which gates only leading-comment parsing).
+	const alwaysIntent = typeof args.intent === "string" ? args.intent.trim() : "";
+	const alwaysTool = typeof args.tool === "string" ? args.tool.trim() : "";
 	if (!options || options.intentMode === undefined || options.intentMode === "off") {
+		if (alwaysIntent.length > 0 || alwaysTool.length > 0) {
+			return { intent: alwaysIntent, tool: alwaysTool.length > 0 ? alwaysTool : undefined };
+		}
 		return undefined;
 	}
 
 	const command = typeof args.command === "string" ? args.command : "";
 	const parsed = parseLeadingComments(command);
 
-	// An explicit `description` argument overrides the comment's intent text, but
-	// the `# tool:` label and the stripped command still apply.
-	const explicit = typeof args.description === "string" ? args.description.trim() : "";
-	const intent = explicit.length > 0 ? explicit : parsed.intent;
-	if (intent === undefined) {
+	// An explicit `intent`/`description` argument overrides the comment's intent
+	// text; an explicit `tool` argument overrides the comment's label. The
+	// stripped command still applies when it came from a comment.
+	const explicitIntent =
+		(typeof args.intent === "string" && args.intent.trim()) ||
+		(typeof args.description === "string" && args.description.trim()) ||
+		"";
+	const explicitTool = typeof args.tool === "string" ? args.tool.trim() : "";
+	const intent = explicitIntent.length > 0 ? explicitIntent : parsed.intent;
+	const tool = explicitTool.length > 0 ? explicitTool : parsed.tool;
+	// Original rule for parsed comments: an intent is required (a bare `# tool:`
+	// comment never produces a header). Explicit arguments may stand alone.
+	if (intent === undefined && explicitTool === "") {
 		return undefined;
 	}
 
-	return { intent, tool: parsed.tool, strippedCommand: parsed.stripped };
+	return { intent: intent ?? "", tool, strippedCommand: parsed.stripped };
 }
 
 function buildCommandDisplay(args: BashCallArgs, maxCommandChars?: number): string {
@@ -307,6 +336,19 @@ function buildBashCallText(
 	spinnerFrame?: string,
 	elapsedMs?: number,
 ): string {
+	// Management calls (taskAction) render a dedicated header — there is no
+	// command to display.
+	if (typeof args.taskAction === "string" && args.taskAction.trim().length > 0) {
+		const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "";
+		const detail = theme.fg("accent", `${args.taskAction.trim()}${taskId ? ` ${taskId}` : ""}`);
+		const spinnerPrefix = spinnerFrame ? `${theme.fg("warning", `${spinnerFrame} `)}` : "";
+		const elapsedSuffix =
+			spinnerFrame && elapsedMs !== undefined
+				? theme.fg("muted", ` · ${formatElapsed(elapsedMs)}`)
+				: "";
+		return `${spinnerPrefix}${toolIcon()} ${theme.fg("toolTitle", theme.bold("bash tasks"))} ${theme.fg("muted", "·")} ${detail}${elapsedSuffix}`;
+	}
+
 	const commandDisplay = buildCommandDisplay(args, options?.maxCommandChars);
 	const intentHeader = buildIntentHeader(args, theme, options, expanded);
 	const shellSuffix =
@@ -317,6 +359,12 @@ function buildBashCallText(
 			: "";
 	const timeoutSuffix = args.timeout
 		? theme.fg("muted", ` (timeout ${args.timeout}s)`)
+		: "";
+	const backgroundSuffix = args.background
+		? theme.fg(
+				"muted",
+				` ⏾ background${typeof args.taskName === "string" && args.taskName.trim().length > 0 ? ` · ${args.taskName.trim()}` : ""}`,
+		  )
 		: "";
 	const spinnerPrefix = spinnerFrame ? `${theme.fg("warning", `${spinnerFrame} `)}` : "";
 	const elapsedSuffix =
@@ -329,7 +377,11 @@ function buildBashCallText(
 	// expanded command body appended by buildIntentHeader.
 	const [head, ...rest] = prompt.split("\n");
 	const tail = rest.length > 0 ? `\n${rest.join("\n")}` : "";
-	return `${spinnerPrefix}${head}${shellSuffix}${timeoutSuffix}${elapsedSuffix}${tail}`;
+	const cwdLine =
+		expanded && typeof args.cwd === "string" && args.cwd.trim().length > 0
+			? `\n${theme.fg("muted", `cwd: ${args.cwd.trim()}`)}`
+			: "";
+	return `${spinnerPrefix}${head}${shellSuffix}${timeoutSuffix}${backgroundSuffix}${elapsedSuffix}${tail}${cwdLine}`;
 }
 
 export function renderBashCall(

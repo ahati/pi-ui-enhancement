@@ -744,3 +744,65 @@ test("renderBashCall ignores expansion when there is no intent header", () => {
 	);
 	assert.equal(renderedText(text), "$ git status --short");
 });
+
+// ─── Explicit intent/tool args + background badge + cwd + taskAction ────────
+
+test("renderBashCall renders an explicit tool arg as the header label", () => {
+	const text = renderBashCall({ command: "sleep 120", tool: "Bash", intent: "long wait" }, createPassThroughTheme(), makeContext());
+	const out = renderedText(text);
+	assert.match(out, /Bash/);
+	assert.match(out, /long wait/);
+});
+
+test("renderBashCall renders a bare tool arg without intent", () => {
+	const text = renderBashCall({ command: "ls", tool: "file listing" }, createPassThroughTheme(), makeContext());
+	const out = renderedText(text);
+	assert.match(out, /file listing/);
+});
+
+test("renderBashCall renders the background badge with an optional task name", () => {
+	const text = renderBashCall(
+		{ command: "sleep 120", background: true, taskName: "long wait" },
+		createPassThroughTheme(),
+		makeContext(),
+	);
+	const out = renderedText(text);
+	assert.match(out, /⏾ background/);
+	assert.match(out, /long wait/);
+});
+
+test("renderBashCall omits the background badge when background is unset", () => {
+	const text = renderBashCall({ command: "ls" }, createPassThroughTheme(), makeContext());
+	assert.doesNotMatch(renderedText(text), /background/);
+});
+
+test("renderBashCall renders taskAction calls as a bash tasks header", () => {
+	const text = renderBashCall(
+		{ taskAction: "kill", taskId: "task-2" },
+		createPassThroughTheme(),
+		makeContext(),
+	);
+	const out = renderedText(text);
+	assert.match(out, /bash tasks/);
+	assert.match(out, /kill task-2/);
+	assert.doesNotMatch(out, /\$/);
+});
+
+test("renderBashCall shows the cwd line in the expanded view", () => {
+	const text = renderBashCall(
+		{ command: "ls", cwd: "/home/u/proj" },
+		createPassThroughTheme(),
+		makeContext({ expanded: true }),
+	);
+	const out = renderedText(text);
+	assert.match(out, /cwd: \/home\/u\/proj/);
+});
+
+test("renderBashCall hides the cwd line when collapsed", () => {
+	const text = renderBashCall(
+		{ command: "ls", cwd: "/home/u/proj" },
+		createPassThroughTheme(),
+		makeContext({ expanded: false }),
+	);
+	assert.doesNotMatch(renderedText(text), /cwd:/);
+});
