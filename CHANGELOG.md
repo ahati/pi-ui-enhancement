@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2026.10.24-r4] - 2026-10-24
+## [2026.10.244] - 2026-10-24
 
 ### Added
 
 - **Bash intent settings are now exposed in `/tool-display`.** `bashIntentMode`, `bashIntentShowCommand`, and `bashCommandMaxChars` were previously config-file-only options documented in the README; the settings dialog now lists them as *Bash intent headers* (`off` | `render` | `render-and-instruct`), *Bash intent command suffix* (`on`/`off`), and *Bash command width limit* (`0`/`40`/`60`/`80`/`120`/`200`), each with an inspector panel and search terms. `/tool-display show` reports the active mode as `bashIntent=<mode>`.
 
-## [2026.10.24-r3] - 2026-10-24
+## [2026.10.243] - 2026-10-24
 
 ### Changed
 
@@ -21,12 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `bash` override no longer rebuilds the tool from `shellPath` / `shellCommandPrefix` settings — pi's own bash tool handles those natively when nothing re-registers it.
 - `/tool-display show` now reports the per-tool rendering state as `render={...}` instead of `owners={...}`.
 
-## [2026.10.24-r2] - 2026-10-24
+## [2026.10.242] - 2026-10-24
 
 ### Changed
 - Release pipeline test: first version published through OIDC trusted publishing with signed provenance.
 
-## [2026.10.24-r1] - 2026-10-24
+## [2026.10.241] - 2026-10-24
 
 ### Changed
 - Dependency refresh: `diff` ^9.0.0 (verified rendering no-op for this code path), `shiki` ^4.5.0, dev dependencies on Pi 1.4.0 (`pi-coding-agent`/`pi-tui`), `typescript` 7.0.2, `tsx` 4.23.15.

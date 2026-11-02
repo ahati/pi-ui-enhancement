@@ -23,12 +23,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
-      - name: Validate version format (YYYY.MM.DD-r<N>)
+      - name: Validate version format (YYYY.MM.DDN)
         run: |
-          VERSION_REGEX='^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-r[0-9]+$'
+          VERSION_REGEX='^[0-9]{4}\.[0-9]{2}\.[0-9]{3,}$'
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if ! [[ "$PKG_VERSION" =~ $VERSION_REGEX ]]; then
-            echo "::error::package.json version '$PKG_VERSION' does not match YYYY.MM.DD-r<N> (e.g. 2025.10.24-r1)"
+            echo "::error::package.json version '$PKG_VERSION' does not match YYYY.MM.DDN (e.g. 2026.10.244 or 2026.11.011)"
             exit 1
           fi
 
@@ -36,7 +36,7 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           PKG_VERSION="$(node -p "require('./package.json').version")"
-          TAG_VERSION="${GITHUB_REF_NAME#v}" # accept both 2025.10.24-r1 and v2025.10.24-r1
+          TAG_VERSION="${GITHUB_REF_NAME#v}" # accept both 2026.10.244 and v2026.10.244
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
             exit 1
@@ -49,8 +49,5 @@ jobs:
         run: npm run check
 
       - name: Publish
-        # --tag latest is explicit because date-based versions parse as semver
-        # prereleases (2026.10.24-r1), and npm refuses to default a prerelease
-        # to the latest dist-tag without it. These are primary releases, so
-        # latest is correct.
+        # Publish to the latest dist-tag
         run: npm publish --provenance --access public --tag latest
