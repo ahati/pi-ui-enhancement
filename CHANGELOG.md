@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.11.011] - 2026-11-02
+
+### Changed
+- **Architectural Modularization (< 800 lines):** Modularized all core files exceeding 800 lines into cohesive, dedicated submodules with root backward-compatible facades:
+  - `src/diff-renderer.ts` (2,669 -> 172 lines): split into `types`, `palette`, `parser`, `inline`, `syntax`, `cells`, `layouts`, and `write-diff`.
+  - `src/tool-overrides.ts` (2,131 -> 409 lines): split into `types`, `write-meta`, `formatting`, `builtin-renderers`, `mcp-custom-renderers`, and `legacy-compat`.
+  - `src/zellij-modal.ts` (1,027 -> 62 lines): split into `types`, `theme`, `text-utils`, `frame`, `modal`, and `settings-modal`.
+  - `src/config-modal.ts` (921 -> 129 lines): split into `types`, `command-args`, `inspector-definitions`, and `setting-mutator`.
+- **Pi 1.5.0 Modernization & Cleanup:** Removed the legacy pre-1.1 `TOOL_DISPLAY_API_KEY` global singleton bridge, pending decoration queue, and consumer subpath, standardizing exclusively on Pi 1.5.0's official `registerToolRenderer` middleware chain.
+
+### Added
+- **E2E Interactive Testing with `@microsoft/tui-test`:** Added end-to-end test suite (`tests/e2e-tui-sessions.test.ts`) that executes live interactive Pi 1.5.0 sessions in virtual PTYs, testing startup banner, `/tool-display` modal rendering, keyboard navigation, preset switching, and command execution.
+
 ## [2026.10.244] - 2026-10-24
 
 ### Added

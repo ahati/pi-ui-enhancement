@@ -7,9 +7,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerToolDisplayOverrides, getWriteExecutionMeta, type WriteExecutionMeta } from "../src/tool-overrides.ts";
 import { DEFAULT_TOOL_DISPLAY_CONFIG, type ToolDisplayConfig } from "../src/types.ts";
 
-const TOOL_DISPLAY_API_KEY = Symbol.for("pi-tool-display.api.v1");
-const TOOL_DISPLAY_PENDING_DECORATIONS_KEY = Symbol.for("pi-tool-display.pendingDecorations.v1");
-
 interface RegisteredToolLike {
 	name: string;
 	renderCall?: (...args: unknown[]) => unknown;
@@ -333,79 +330,6 @@ test("successful nested writes record codemode diffs on tool_result; failures do
 		await harness.toolResult({ path: filePath }, "top-1", false);
 		assert.equal(harness.recorded.length, 1, "non-nested write records nothing");
 	});
-});
-
-// ---------------------------------------------------------------------------
-// ToolDisplayApi + MCP/custom decoration (unchanged behavior)
-// ---------------------------------------------------------------------------
-
-test("runtime API registers and unregisters typed adapter contracts", () => {
-	type GlobalWithToolDisplayApi = typeof globalThis & {
-		[TOOL_DISPLAY_API_KEY]?: {
-			version: number;
-			decorateTool(tool: Record<string, unknown>): Record<string, unknown>;
-			registerAdapter(adapter: { toolName?: string; kind?: "mcp"; overrideExistingRenderers?: boolean }): string;
-			unregisterAdapter(id: string): boolean;
-		};
-	};
-	const { api } = createExtensionApiStub();
-	registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-	const displayApi = (globalThis as GlobalWithToolDisplayApi)[TOOL_DISPLAY_API_KEY];
-	assert.ok(displayApi);
-
-	const id = displayApi.registerAdapter({
-		toolName: "adapter_mcp",
-		kind: "mcp",
-		overrideExistingRenderers: true,
-	});
-	const decorated = displayApi.decorateTool({ name: "adapter_mcp" });
-	assert.equal(typeof decorated.renderCall, "function");
-	assert.equal(typeof decorated.renderResult, "function");
-	assert.equal(displayApi.unregisterAdapter(id), true);
-	assert.equal(displayApi.unregisterAdapter(id), false);
-});
-
-test("registerToolDisplayOverrides drains pending display decorations from early-loading extensions", () => {
-	type GlobalWithPendingDecorations = typeof globalThis & {
-		[TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?: Array<{
-			tool: Record<string, unknown>;
-			adapter?: Record<string, unknown>;
-		}>;
-	};
-	const globalWithPending = globalThis as GlobalWithPendingDecorations;
-	const previousPending = globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
-	const queuedTool: Record<string, unknown> = {
-		name: "mcp",
-		label: "MCP Proxy",
-		description: "Unified MCP gateway.",
-		parameters: {},
-		execute(): void {
-			// No-op test stub.
-		},
-	};
-	globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY] = [
-		{
-			adapter: { kind: "mcp" },
-			tool: queuedTool,
-		},
-	];
-
-	try {
-		const { api, registeredTools } = createExtensionApiStub();
-
-		registerToolDisplayOverrides(api, () => DEFAULT_TOOL_DISPLAY_CONFIG);
-
-		assert.equal(registeredTools.some((tool) => tool.name === "mcp"), false);
-		assert.equal(typeof queuedTool.renderCall, "function", "expected queued MCP tool to receive renderCall");
-		assert.equal(typeof queuedTool.renderResult, "function", "expected queued MCP tool to receive renderResult");
-		assert.equal(globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY]?.length, 0);
-	} finally {
-		if (previousPending) {
-			globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY] = previousPending;
-		} else {
-			delete globalWithPending[TOOL_DISPLAY_PENDING_DECORATIONS_KEY];
-		}
-	}
 });
 
 test("bash renderResult reuses one Text component across partial updates", () => {

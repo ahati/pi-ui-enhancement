@@ -1,20 +1,14 @@
 {
   "name": "pi-ui-enhancement",
-  "version": "2026.10.244",
+  "version": "2026.11.011",
   "description": "Compact tool call rendering, diff visualization, Shiki code blocks, codemode diffs, and output truncation for the Pi coding agent. Successor to pi-tool-display.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
-    ".": "./index.ts",
-    "./tool-display-api-consumer": {
-      "types": "./tool-display-api-consumer.d.ts",
-      "default": "./tool-display-api-consumer.js"
-    }
+    ".": "./index.ts"
   },
   "files": [
     "index.ts",
-    "tool-display-api-consumer.js",
-    "tool-display-api-consumer.d.ts",
     "src",
     "config/config.example.json",
     "README.md",
@@ -82,6 +76,7 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^1.4.0",
     "@earendil-works/pi-tui": "^1.4.0",
+    "@microsoft/tui-test": "^0.1.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   },
