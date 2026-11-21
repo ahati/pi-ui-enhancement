@@ -46,6 +46,7 @@ import minLight from "shiki/themes/min-light.mjs";
 import oneDarkPro from "shiki/themes/one-dark-pro.mjs";
 import vitesseDark from "shiki/themes/vitesse-dark.mjs";
 import vitesseLight from "shiki/themes/vitesse-light.mjs";
+import { ANSI_SGR_PATTERN } from "./ansi-utils.js";
 import { registerCleanup } from "./disposable.js";
 import {
 	DEFAULT_TOOL_DISPLAY_CONFIG,
@@ -86,7 +87,7 @@ const FONT_STYLE_ITALIC = 1;
 const FONT_STYLE_BOLD = 2;
 const FONT_STYLE_UNDERLINE = 4;
 const FONT_STYLE_STRIKETHROUGH = 8;
-const SHIKI_MARKDOWN_PATCH_VERSION = 1;
+const SHIKI_MARKDOWN_PATCH_VERSION = 2;
 const PATCH_KEY = Symbol.for("pi-render.markdownShikiPatch.v1");
 const PLAIN_TEXT_LANGUAGES = new Set(["", "text", "txt", "plain", "plaintext", "console", "ansi"]);
 const LANGUAGE_ALIASES: Record<string, string> = {
@@ -415,22 +416,30 @@ function renderHighlightedLines(
 		?? renderFallbackHighlightedLines(code, lang, theme);
 }
 
-function buildBorderLine(
-	left: string,
-	right: string,
+const CODE_RULE_GLYPH = "─";
+const CODE_RULE_LEAD = 1;
+const CODE_RULE_LABEL_GAP = 2;
+
+function buildTopRule(
 	width: number,
 	theme: MarkdownThemeLike,
 	label?: string,
 ): string {
-	const safeWidth = Math.max(2, Math.floor(width));
-	const cleanLabel = label?.trim();
-	// Reserve room for both corners plus one space of padding around the label so
-	// the right corner (╮/╯) always survives, even with long language tags.
-	const maxLabelWidth = Math.max(0, safeWidth - 4);
-	const fittedLabel = cleanLabel ? truncateToWidth(cleanLabel, maxLabelWidth, "…") : "";
+	const safeWidth = Math.max(1, Math.floor(width));
+	const cleanLabel = label?.trim() ?? "";
+	// Reserve the lead rule, one space around the label, and at least one trailing
+	// rule so long language tags cannot consume the whole row.
+	const maxLabelWidth = Math.max(0, safeWidth - CODE_RULE_LEAD - CODE_RULE_LABEL_GAP - 1);
+	const fittedLabel = cleanLabel
+		? truncateToWidth(cleanLabel, maxLabelWidth, "…").replace(ANSI_SGR_PATTERN, "")
+		: "";
 	const labelText = fittedLabel ? ` ${fittedLabel} ` : "";
-	const availableFillWidth = Math.max(0, safeWidth - 2 - visibleWidth(labelText));
-	return theme.codeBlockBorder(`${left}${labelText}${"─".repeat(availableFillWidth)}${right}`);
+	const fillWidth = Math.max(0, safeWidth - CODE_RULE_LEAD - visibleWidth(labelText));
+	return theme.codeBlockBorder(`${CODE_RULE_GLYPH.repeat(CODE_RULE_LEAD)}${labelText}${CODE_RULE_GLYPH.repeat(fillWidth)}`);
+}
+
+function buildBottomRule(width: number, theme: MarkdownThemeLike): string {
+	return theme.codeBlockBorder(CODE_RULE_GLYPH.repeat(Math.max(1, Math.floor(width))));
 }
 
 function renderFormattedCodeBlock(
@@ -439,8 +448,10 @@ function renderFormattedCodeBlock(
 	width: number,
 	theme: MarkdownThemeLike,
 ): string[] {
-	// Layout: │ <code padded to codeArea> │  → the right border is always drawn.
-	const codeArea = Math.max(1, Math.floor(width) - 4);
+	// Horizontal bars only: no side borders, so the code gets the two reclaimed
+	// border columns. Every row is padded to the full width to keep the rules aligned.
+	const safeWidth = Math.max(3, Math.floor(width));
+	const codeArea = Math.max(1, safeWidth - 2);
 	const rows: string[] = [];
 	for (const line of lines) {
 		const visualRows = visibleWidth(line) <= codeArea
@@ -448,16 +459,16 @@ function renderFormattedCodeBlock(
 			: wrapTextWithAnsi(line, codeArea);
 		for (const visualRow of visualRows) {
 			const padding = Math.max(0, codeArea - visibleWidth(visualRow));
-			rows.push(`${theme.codeBlockBorder("│")} ${visualRow}${" ".repeat(padding)} ${theme.codeBlockBorder("│")}`);
+			rows.push(` ${visualRow}${" ".repeat(padding)} `);
 		}
 	}
 	if (rows.length === 0) {
-		rows.push(`${theme.codeBlockBorder("│")}${" ".repeat(codeArea + 2)}${theme.codeBlockBorder("│")}`);
+		rows.push(" ".repeat(safeWidth));
 	}
 	return [
-		buildBorderLine("╭", "╮", width, theme, languageLabel),
+		buildTopRule(safeWidth, theme, languageLabel),
 		...rows,
-		buildBorderLine("╰", "╯", width, theme),
+		buildBottomRule(safeWidth, theme),
 	];
 }
 

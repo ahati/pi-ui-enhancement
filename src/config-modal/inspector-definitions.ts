@@ -484,20 +484,20 @@ export function buildInspectorSettings(
 		},
 		{
 			id: "formatCodeBlocks",
-			label: "Code block box",
+			label: "Code block rules",
 			currentValue: toOnOff(config.formatCodeBlocks),
 			values: ["on", "off"],
-			inspectorTitle: "Code Block Box Formatting",
+			inspectorTitle: "Code Block Rule Formatting",
 			inspectorSummary: [
-				"Toggles the rounded bordered layout for markdown code blocks.",
+				"Toggles the horizontal-rule layout for markdown code blocks.",
 				"This only changes transcript presentation; it does not alter stored message content or model context.",
 			],
 			inspectorOptions: [
-				"on — render fences as compact bordered code panels with a language label",
+				"on — render fences as top and bottom rules with a language label",
 				"off — keep classic triple-backtick fence formatting",
 			],
 			inspectorAdvanced: buildAdvancedNotes(config, capabilities, [
-				"Code block box formatting can be used with Shiki on or off; highlighting falls back to Pi's built-in renderer when needed.",
+				"Code block rule formatting can be used with Shiki on or off; highlighting falls back to Pi's built-in renderer when needed.",
 			]),
 			inspectorPath: configPath,
 			searchTerms: ["code", "block", "box", "format", "fence", "markdown"],

@@ -158,7 +158,7 @@ The modal exposes the day-to-day controls most people change regularly:
 - bash output mode
 - diff layout mode and diff indicators
 - external diff previews
-- Shiki code highlighting and code block box toggles
+- Shiki code highlighting and code block rule toggles
 - native user message box toggle
 
 Advanced options remain in `config.json`.
@@ -308,7 +308,7 @@ Effective configuration is merged as defaults → global config → project conf
 | `customToolOverrides` | object | `{ "*": … }` | Rendering rules for non-built-in extension tools. The shipped `"*"` wildcard decorates every third-party tool (compact call line + summarized output); add an exact-name entry to override one tool, or `"*": { "enabled": false }` to turn decorate-all off |
 | `enableNativeUserMessageBox` | boolean | `false` | Bordered user prompt rendering (off by default; user prompts keep Pi's native look) |
 | `enableShikiCodeBlocks` | boolean | `true` | Use Shiki's TextMate grammar renderer for markdown code fences when the language is supported |
-| `formatCodeBlocks` | boolean | `true` | Render markdown code fences as compact bordered code panels instead of raw triple-backtick blocks |
+| `formatCodeBlocks` | boolean | `true` | Render markdown code fences as horizontal rules with a language label instead of raw triple-backtick blocks |
 | `shikiCodeBlockTheme` | string | `"github-dark"` | Shiki theme for code fences: `github-dark`, `github-light`, `dark-plus`, `light-plus`, `min-dark`, `min-light`, `one-dark-pro`, `vitesse-dark`, or `vitesse-light` |
 | `readOutputMode` | string | `"hidden"` | `hidden`, `summary`, or `preview` |
 | `searchOutputMode` | string | `"hidden"` | `hidden`, `count`, or `preview` |
@@ -499,7 +499,7 @@ Thinking blocks are labeled during streaming and on final messages; the collapse
 
 When enabled, markdown code fences in assistant, user, custom, compaction, and skill messages are rendered through Shiki's TextMate grammars for common languages such as TypeScript, JavaScript, Python, Bash, JSON, Markdown, YAML, HTML/CSS, Rust, Go, Java, Kotlin, Swift, C/C++, C#, Ruby, PHP, SQL, Dockerfile, TOML, XML, Vue, and Svelte.
 
-`formatCodeBlocks` replaces the classic triple-backtick visual wrapper with a compact rounded panel and language label. If Shiki cannot highlight a language, the extension falls back to Pi's built-in markdown highlighter while keeping the configured code block formatting.
+`formatCodeBlocks` replaces the classic triple-backtick visual wrapper with a top rule that carries the language label and a full-width bottom rule. If Shiki cannot highlight a language, the extension falls back to Pi's built-in markdown highlighter while keeping the configured code block formatting.
 
 ### Native user message box
 
