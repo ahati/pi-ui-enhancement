@@ -46,7 +46,7 @@ export class ZellijModalFrame {
 		return `${vertical}${paddedContent}${vertical}`;
 	}
 
-	renderFrame(contentLines: string[], width: number, palette: ZellijColorPalette): ZellijModalRenderOutput {
+	renderFrame(contentLines: readonly string[], width: number, palette: ZellijColorPalette): ZellijModalRenderOutput {
 		const frameWidth = Math.max(4, width);
 		const safeContent = contentLines.length > 0 ? contentLines : [""];
 		const lines: string[] = [];

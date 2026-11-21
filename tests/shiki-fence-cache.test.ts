@@ -75,7 +75,7 @@ test("entry count is bounded: the first fence is evicted after the cache fills",
 
 test("end-to-end: rendering the same markdown twice produces identical lines", () => {
 	registerShikiCodeBlockRenderer(() => config);
-	const render = (): string[] => new Markdown("```ts\nconst x = 1;\n```\n", 0, 0, {
+	const render = (): readonly string[] => new Markdown("```ts\nconst x = 1;\n```\n", 0, 0, {
 		heading: identity,
 		link: identity,
 		linkUrl: identity,

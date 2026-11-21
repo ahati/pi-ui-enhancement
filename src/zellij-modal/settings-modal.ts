@@ -57,7 +57,7 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		this.container.addChild(this.contentBox);
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		const safeWidth = Math.max(1, width);
 		try {
 			return this.container.render(safeWidth);

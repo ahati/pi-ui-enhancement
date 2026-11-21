@@ -31,7 +31,7 @@ export class ZellijModal implements ZellijModalComponent {
 		this.frame = new ZellijModalFrame({ ...this.config, palette: this.palette });
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		const contentWidth = Math.max(1, width - 2 - this.config.padding * 2);
 		const paddedWidth = contentWidth + this.config.padding * 2;
 		const sidePadding = " ".repeat(this.config.padding);

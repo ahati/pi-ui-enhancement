@@ -176,7 +176,7 @@ export function pluralize(
 }
 
 export function previewLines(
-  lines: string[],
+  lines: readonly string[],
   maxLines: number,
 ): { shown: string[]; remaining: number } {
   const limit = Math.max(0, maxLines);

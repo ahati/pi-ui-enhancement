@@ -14,7 +14,7 @@ function shikiConfig(overrides: Partial<ToolDisplayConfig> = {}): ToolDisplayCon
 	return { ...DEFAULT_TOOL_DISPLAY_CONFIG, ...overrides };
 }
 
-function renderInsideToolBox(component: Component, width: number): string[] {
+function renderInsideToolBox(component: Component, width: number): readonly string[] {
 	const box = new Box(1, 1);
 	box.addChild(component);
 	return box.render(width);

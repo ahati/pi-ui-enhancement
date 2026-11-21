@@ -66,7 +66,7 @@ function isVisuallyEmptyLine(line: string): boolean {
   return withoutControlSequences.trim().length === 0;
 }
 
-function trimEdgePadding(lines: string[]): string[] {
+function trimEdgePadding(lines: readonly string[]): string[] {
   let start = 0;
   while (start < lines.length && isVisuallyEmptyLine(lines[start] ?? "")) {
     start++;
@@ -80,7 +80,7 @@ function trimEdgePadding(lines: string[]): string[] {
   return lines.slice(start, end);
 }
 
-export function normalizeUserMessageContentLines(lines: string[]): string[] {
+export function normalizeUserMessageContentLines(lines: readonly string[]): string[] {
   const normalizedLines = trimEdgePadding(lines);
   if (normalizedLines.length === 0) {
     return [];

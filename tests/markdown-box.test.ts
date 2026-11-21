@@ -22,7 +22,7 @@ const stubTheme = {
 	underline: identity,
 };
 
-function renderMarkdown(source: string, width: number): string[] {
+function renderMarkdown(source: string, width: number): readonly string[] {
 	return new Markdown(source, 0, 0, stubTheme).render(width);
 }
 

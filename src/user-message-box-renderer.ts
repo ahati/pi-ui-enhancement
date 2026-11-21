@@ -32,9 +32,9 @@ interface CachedUserMessageMarkdownRenderer {
   text: string;
   theme: unknown;
   defaultTextStyle?: Record<string, unknown>;
-  renderer: { render(width: number): string[] };
+  renderer: { render(width: number): readonly string[] };
   renderedWidth: number;
-  renderedLines: string[];
+  renderedLines: readonly string[];
 }
 
 interface CachedUserMessageFinalOutput {
@@ -49,7 +49,7 @@ interface CachedUserMessageFinalOutput {
 
 interface CachedUserMessageBodyLines {
   width: number;
-  lines: string[];
+  lines: readonly string[];
 }
 
 const MIN_BORDER_WIDTH = 8;
@@ -146,7 +146,7 @@ function wrapContentLine(
 
 function createMarkdownRenderer(
   markdownState: UserMessageMarkdownState,
-): { render(width: number): string[] } {
+): { render(width: number): readonly string[] } {
   return new Markdown(
     markdownState.text,
     0,
@@ -274,12 +274,12 @@ export function shouldBypassUserMessageMarkdownRebuild(
 export function createUserMessageMarkdownLineRenderer(
   buildRenderer: (
     markdownState: UserMessageMarkdownState,
-  ) => { render(width: number): string[] } = createMarkdownRenderer,
+  ) => { render(width: number): readonly string[] } = createMarkdownRenderer,
 ): (
   instance: object,
   markdownState: UserMessageMarkdownState,
   width: number,
-) => string[] {
+) => readonly string[] {
   const cache = new WeakMap<object, CachedUserMessageMarkdownRenderer>();
 
   return (instance, markdownState, width) => {
@@ -316,12 +316,12 @@ const renderCachedUserMessageMarkdownLines =
 function renderUserMessageBodyLines(
   instance: unknown,
   innerWidth: number,
-  originalRender: (width: number) => string[],
+  originalRender: (width: number) => readonly string[],
   markdownState: UserMessageMarkdownState | undefined,
   originalBodyLineCache?: WeakMap<object, CachedUserMessageBodyLines>,
-): string[] {
+): readonly string[] {
   if (typeof instance !== "object" || instance === null) {
-    return originalRender.call(instance, innerWidth) as string[];
+    return originalRender.call(instance, innerWidth);
   }
 
   if (!markdownState) {
