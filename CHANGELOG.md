@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Markdown code blocks use horizontal rules instead of a full box.** `formatCodeBlocks` now renders a top rule that carries the language label (`─ ts ─────`) and a full-width bottom rule, with no left/right borders. Code rows reclaim the two border columns and stay padded to the full width so the rules align; long language labels are ellipsized and unlabeled fences get matching top and bottom rules.
+
 ## [2026.11.011] - 2026-11-02
 
 ### Changed
