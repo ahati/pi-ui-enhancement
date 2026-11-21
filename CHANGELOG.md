@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026.11.211] - 2026-11-21
+
 ### Changed
 - **Markdown code blocks use horizontal rules instead of a full box.** `formatCodeBlocks` now renders a top rule that carries the language label (`─ ts ─────`) and a full-width bottom rule, with no left/right borders. Code rows reclaim the two border columns and stay padded to the full width so the rules align; long language labels are ellipsized and unlabeled fences get matching top and bottom rules.
+
+### Fixed
+- **Pi 1.6.0 compatibility (breaking upstream contract).** Extension component `render()` now returns `readonly string[]`, and Pi's `Container` returns the same cached array while children are unchanged (the fullscreen scroll CPU fix). Local interfaces and signatures (`UserMessageRenderFn`, markdown line-renderer cache types, modal frame/render types, preview helpers) were loosened to `readonly string[]`; no runtime change, since nothing mutates render output in place. Dev dependencies bumped to `@earendil-works/pi-coding-agent` / `@earendil-works/pi-tui` `^1.6.0`.
+
+### Docs
+- Recorded `zellij-modal` provenance: the vendoring comment pointed at an unpublished local package. A 2026-11-21 survey found no public upstream (all 26 known copies are March 2026 snapshots of the same vendored file, customized per repo), so this fork's modularized and Pi 1.6.0-ported revision is documented as canonical.
 
 ## [2026.11.011] - 2026-11-02
 
